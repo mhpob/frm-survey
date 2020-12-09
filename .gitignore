@@ -2,3 +2,18 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Images
+*.jpg
+
+
+# Other
+*.html
+*.pdf
+
+# Shapefiles
+*.shp
+*.prj
+*.dbf
+*.cpg
+*.shx
