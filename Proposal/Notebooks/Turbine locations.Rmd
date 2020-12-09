@@ -1,0 +1,167 @@
+---
+title: "Trawl location simulation"
+output:
+  pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/bsb-trap-survey/proposal')
+```
+
+
+Current goal is to visualize what it might look like to set up the different types of trawls. At this point, we don't actually know where the turbines are going to be, however:
+
+- The [US Wind website](http://www.uswindinc.com/maryland-offshore-wind-project/) for the MD Wind project lists in its info sheet that 32 turbines are planned.
+- The [attached viewshed simulation](https://ibb.co/pwLW4J5) also shows 32 turbines.
+
+Here's the orgiginal viewshed simulation:
+
+![orginal simulation](c:/users/darpa2/analysis/bsb-trap-survey/proposal/data/USW-PANORAMA-SIMULATIONS-01-Pier-0821-v20191115.jpg)
+And what it looks like if we zoom in:
+
+![simulation cropped](c:/users/darpa2/analysis/bsb-trap-survey/proposal/data/turbine_locations.jpg)
+
+Luckily this is using the ESRI basemap, so I used QGIS to georeference the points. These are **NOT EXACT**, since I had to pointy-clicky target them, but hopefully it gives us somewhere to start.
+
+```{r}
+library(sf)
+
+turbines <- read_sf('data/spatial/turbines.shp')
+
+plot(st_geometry(turbines))
+```
+
+My thoughts in terms of site selection:
+
+- Effect size decreases with increasing distance from target turbine
+- If within wind farm, effect of other turbines increases with increasing distance from target turbine
+- If on the wind farm margin, effect size of non-target turbines can increase or decrease which can cause some confounding influences.
+- We may want to avoid turbines on wind farm margin (blue points below)
+
+```{r}
+turbines$margin <- F
+turbines$margin[c(1:5, 8:12, 17:18, 22:23, 26:27, 29:32)] <- T
+
+library(ggplot2)
+ggplot() +
+  geom_sf(data = turbines, aes(color = margin), show.legend = F) +
+  theme_minimal()
+```
+
+When looking at it, this seems overly-conservative, but it's as good a place as any to start. I'll use a plan consisting of:
+
+- 8 x 900-meter-long transects
+- Deployed from March - November (9 months)
+- Deployed over two years
+
+```{r}
+n_transects <- 8
+trans_length <- 900
+n_months <- 9
+n_yrs <- 2
+
+library(dplyr)
+
+turbine_select <- turbines %>% 
+  filter(margin == F) %>% 
+  st_transform(6487)
+```
+
+Randomly select a turbine site and a heading between 0 and 2$\pi$. Attach that to a month/year combination, calculate the ending coordinates, and transform this into a spatial line to play nicely with shapefiles, GPS, etc.
+
+```{r}
+trawls <- data.frame(
+  st_coordinates(turbine_select)[
+    sample(nrow(st_coordinates(turbine_select)),
+           size = n_transects * n_months * n_yrs,
+           replace = T),],
+  heading = runif(n_transects * n_months * n_yrs, 0, 2 * pi),
+  data.frame(month = rep(month.abb[3:11], each = n_transects * n_yrs),
+             year = rep(c('Year 1', 'Year 2'), each = n_transects))
+)
+
+trawls <- trawls %>% 
+  mutate(x_end = trans_length * sin(heading) + X,
+         y_end = trans_length * cos(heading) + Y)
+
+
+
+library(purrr)
+out <- pmap(trawls[, c(1, 2, 6, 7)], ~
+              c(...) %>%
+              matrix(., , ncol= 2, byrow = TRUE) %>% 
+              st_linestring) %>%
+  st_as_sfc(crs = 6487) %>% 
+  st_as_sf(trawls) %>% 
+  st_transform(4326)
+```
+
+Plot all of the transects.
+
+```{r}
+ggplot() +
+  geom_sf(data = turbines) +
+  geom_sf(data = out)
+```
+
+Plot the randomized transects by month.
+
+```{r}
+ggplot() +
+  geom_sf(data = turbines) +
+  geom_sf(data = out, aes(color = year), size = 1) +
+  facet_wrap(~ month) +
+  labs(color = 'Year') +
+  theme_minimal()
+```
+
+A few turbines are repeated within a given month. We probably want all transects in a month/year combination to be associated with a different turbine, so re-run the above.
+
+```{r}
+start_coords <- do.call(rbind,
+                        replicate(n_months * n_yrs,
+                                  data.frame(
+                                    st_coordinates(turbine_select)[
+                                      sample(nrow(st_coordinates(turbine_select)),
+                                             size = n_transects),]
+                                  ),
+                                  simplify = F
+                        )
+)
+
+
+trawls <- data.frame(
+  start_coords,
+  heading = runif(n_transects * n_months * n_yrs, 0, 2 * pi),
+  data.frame(month = factor(rep(month.abb[3:11], each = n_transects * n_yrs),
+                               levels = month.abb[3:11], ordered = T),
+             year = rep(c('Year 1', 'Year 2'), each = n_transects))
+)
+
+trawls <- trawls %>% 
+  mutate(x_end = trans_length * sin(heading) + X,
+         y_end = trans_length * cos(heading) + Y)
+
+
+
+out <- pmap(trawls[, c(1, 2, 6, 7)], ~
+              c(...) %>%
+              matrix(., , ncol= 2, byrow = TRUE) %>% 
+              st_linestring) %>%
+  st_as_sfc(crs = 6487) %>% 
+  st_as_sf(trawls) %>% 
+  st_transform(4326)
+```
+
+
+Plot by month/year.
+
+```{r}
+ggplot() +
+  geom_sf(data = turbines) +
+  geom_sf(data = out, aes(color = year), size = 1) +
+  facet_wrap(~ month) +
+  labs(color = 'Year') +
+  theme_minimal()
+```
