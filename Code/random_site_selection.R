@@ -1,15 +1,16 @@
-library(sf)
+library(ggplot2); library(sf)
 
+# Import MD WEA shape
 wea <- st_read('data/geo/offshore wind layers.gdb',
                query = "select * from BOEM_Wind_Leases_as_of_Aug_3_2021 where State = 'Maryland'") %>% 
   st_transform(26918)
 
+# plot(st_geometry(wea))
 
-
-plot(st_geometry(wea))
-
+# We want the control area to be ~ 1/3 of the height of the WEA
 cntrl_hgt <- (st_bbox(wea)$ymax - st_bbox(wea)$ymin) / 3
 
+# Create a polygon representing the control area
 control <- st_polygon(
   list(
     cbind(
@@ -24,13 +25,12 @@ control <- st_polygon(
 control <- st_sfc(control, crs = 26918)
 
 
-library(ggplot2)
-ggplot() +
-  geom_sf(data = wea, fill = 'red') +
-  geom_sf(data = control, fill = 'green') 
+# ggplot() +
+#   geom_sf(data = wea, fill = 'red') +
+#   geom_sf(data = control, fill = 'green') 
 
 
-
+# Function to sample points in the polygons that are at least some distance apart
 dist_sample <- function(x, n, dist){
   pts <- x %>% 
     st_sample(n) %>% 
@@ -38,7 +38,7 @@ dist_sample <- function(x, n, dist){
   
   i <- 1 # iterator start
   
-  repeat( {
+  repeat({
     #  create buffer around i-th point
     buffer <- st_buffer(pts[i,], dist) 
     
@@ -53,6 +53,7 @@ dist_sample <- function(x, n, dist){
     pts <- pts[!offending,] 
     
     if ( i >= nrow(pts)) {
+      # Sample new points if some were dropped
       if(nrow(pts) < n){
         pts <- rbind(pts, st_sf(geometry = st_sample(x, 1)))
         i <- i + 1 
@@ -64,30 +65,44 @@ dist_sample <- function(x, n, dist){
       # rinse & repeat
       i <- i + 1 
     }
-    
-  } )
+  })
   
   pts
 }
 
+
+# Experimental points
 exp_pts <- dist_sample(wea, 8, 2000)
+exp_pts$site <- 'experimental'
+
+# ggplot() +
+#   geom_sf(data = wea, fill = 'red') +
+#   geom_sf(data = control, fill = 'green') +
+#   geom_sf(data = exp_pts)
 
 
-
-ggplot() +
-  geom_sf(data = wea, fill = 'red') +
-  geom_sf(data = control, fill = 'green') +
-  geom_sf(data = exp_pts)
-
-
+# Control points
 ctrl_pts <- dist_sample(control, 4, 2000)
+ctrl_pts$site <- 'control'
 
-ggplot() +
-  geom_sf(data = wea, fill = 'red') +
-  geom_sf(data = control, fill = 'green') +
-  geom_sf(data = exp_pts) +
-  geom_sf(data = ctrl_pts)
+# ggplot() +
+#   geom_sf(data = wea, fill = 'red') +
+#   geom_sf(data = control, fill = 'green') +
+#   geom_sf(data = exp_pts) +
+#   geom_sf(data = ctrl_pts)
 
+# Add Ocean City, MD
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        site = 'ocmd') %>% 
+  st_transform(26918)
+
+
+sites <- rbind(ocmd,
+               exp_pts,
+               ctrl_pts)
 
 # Transit times (min) @ 7 kt (Sea born)
 sb_loc <- st_sf(geometry = st_sfc(st_point(c(-75.10333, 38.32742)), crs = 4326) %>% 
