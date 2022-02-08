@@ -1,8 +1,8 @@
 # n individuals
-rep_vec <- 15
+rep_vec <- 12
 
 # n measures within individuals
-repeat_vec <- 6
+repeat_vec <- 15
 
 # Among-individual variation in treatment 1 – Hereby referred to as the homogeneous
 # (low-variation) treatment
@@ -12,7 +12,7 @@ theta_among.homog_vec <- 0.2
 theta_among.var_vec <- 0.4
 
 # Observation level variation/overdisperison (within-individual variation)
-theta_obs_vec <- 0.2
+theta_obs_vec <- 0.58
 
 # set up data frame
 expdat <- expand.grid(
@@ -60,8 +60,8 @@ errmat <- matrix(NA,nrow=nsim,ncol=9)
 library(lme4)
 
 ss2 <-simulate(~ttt+(0+homog|indiv:ttt)+(0+var|indiv:ttt)+
-                 (1|total_obs), nsim=nsim, family=binomial,
-               weights=rep(5,nrow(expdat)),
+                 (1|total_obs), nsim=nsim, family=poisson,
+               # weights=rep(5,nrow(expdat)),
                newdata=expdat, newparams=list(theta=theta,beta=beta))
 expdat$resp <- ss2[[1]]
 
@@ -70,7 +70,7 @@ library(plyr)
 
 fitfun <- function(expdat,i,.progress="text",verbose=TRUE){
   fit2 <- try(glmer(resp~ttt+(0+homog|indiv:ttt)+
-                      (0+var|indiv:ttt)+(1|total_obs), family=binomial,
+                      (0+var|indiv:ttt)+(1|total_obs), family=poisson,
                     weights=rep(5,nrow(expdat)),
                     data=expdat),silent=TRUE)
   if(is(fit2,"try-error")) return(errmat)
