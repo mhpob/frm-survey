@@ -1,0 +1,192 @@
+---
+title: "Cruise Report: 2022-06-07"
+subtitle: "Recreational angling survey"
+author: "Mike O'Brien (UMCES)"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/bsb-trap-survey')
+```
+
+## Participants
+
+-   Dave Secor (UMCES)
+-   Mike O'Brien (UMCES)
+-   Kohma Arai (UMCES)
+-   Roman Jesien (MD Coastal Bays Program)
+-   Capt. Dan Stauffer (*F/V Fin Chaser*, captain)
+-   Joey M. (*F/V Fin Chaser*, mate)
+
+## Overall
+
+-   06:00 Meet at Talbot St. Pier, load gear onto *Fin Chaser*
+-   06:10 Depart dock, transit to Twin Wrecks
+-   07:36 Arrive at Twin Wrecks
+    -   07:47 Begin jig fishing
+    -   08:04 - 09:20 Drop fishing
+    -   09:20 Transit to A5-3
+-   09:45 Arrive at A5-3
+    -   09:51 Begin jig fishing
+    -   10:10 - 11:29 Drop fishing
+    -   11:30 Transit to RTWB
+-   11:39 Arrive at RTWB
+-   11:42 Return to Talbot St Pier, Ocean City, MD
+-   13:15 Arrive Ocean City, MD (time approximate)
+
+## Description
+
+```{r description, echo=FALSE}
+library(readxl)
+library(ggplot2)
+station_data <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                           sheet = 'station')
+```
+
+Wind speed was `r station_data$wind_sp_kts[1]` knots at the control site and `r station_data$wind_sp_kts[1]` knots at the experimental site, coming from `r unique(station_data$wind_dir_deg)` degrees. Waves were `r unique(station_data$wave_ht_m)` m with a swell of `r unique(station_data$wave_swell_m)` m. Cloud cover was `r min(station_data$cloud_cover_tnth)` to `r max(station_data$cloud_cover_tnth)` tenths of the sky.
+
+## Cruise map
+
+```{r make-map-data, echo=FALSE, message=FALSE, warning=FALSE}
+library(leaflet)
+
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+
+library(sf)
+library(dplyr)
+library(targets)
+exp_tracks <- lapply(list.files('data/gps 2206', full.names = T),
+            st_read, layer = 'tracks', quiet = T)
+
+exp_tracks <- exp_tracks |> 
+  bind_rows(exp_tracks) |> 
+  slice(-n()) |> 
+  st_cast('LINESTRING')
+
+ctrl_points <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                          sheet = 'drop') |> 
+  distinct(drop_id, .keep_all = T)
+
+st_pts <- select(ctrl_points, drop_id, start_lat_dd, start_lon_dd) |> 
+  st_as_sf(coords = c('start_lon_dd', 'start_lat_dd'))
+end_pts <- select(ctrl_points, drop_id, end_lat_dd, end_lon_dd) |> 
+  filter(!is.na(end_lat_dd)) |> 
+  st_as_sf(coords = c('end_lon_dd', 'end_lat_dd'))
+
+
+tracks <- st_sfc(mapply(function(a,b){st_cast(st_union(a,b),"LINESTRING")},
+              st_pts[st_pts$drop_id %in% end_pts$drop_id,]$geometry,
+              end_pts$geometry, SIMPLIFY=FALSE),
+       crs = 4326)
+
+
+tar_load(towers)
+zones <- st_read(tar_read(wea_spatial), layer = 'buildout zones', quiet = T)
+ctrl_area <- st_read(tar_read(wea_spatial), layer = 'control area', quiet = T)
+
+sites <- data.frame(site = c('ocmd', 'twrecks', 'rtwb', 'a5-3'),
+                    lat = c(38.32742, 38.23071, 38.303, 38.286),
+                    long = c(-75.10333, -74.75808, -74.645, -74.665)) |> 
+  st_as_sf(coords = c('long', 'lat'), crs = 4326)
+```
+
+The individual tracks can be seen by zooming in. Note the variability in the real track (see experimental drops) versus point-to-point tracks (see the control sites, where real tracks weren't recorded. Additionally, we can see that we went straight over the control reef, but drifted around a bit at the experimental site.
+
+```{r map, echo=FALSE}
+
+leaflet() |> 
+  setView(lng = -74.66451, lat = 38.28577, zoom = 12) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |>
+  addPolygons(data = zones, color = c('red', 'yellow', 'green'),
+              group = 'Development Zone') |> 
+  addPolygons(data = ctrl_area, color = 'gray', group = 'Control Zone') |> 
+  addCircles(data = towers,
+             color = 'red', radius = 20, group = 'Turbines') |> 
+  addCircles(data = sites[sites$site != 'ocmd',], radius = 800,
+             label = ~ site, fill = FALSE) |> 
+  addPolylines(data = exp_tracks,
+               color = ~paste0('#', gsub('</?color>', '', exp_tracks$line)),
+               label = ~ name, group = 'Exp. Drop Tracks') |> 
+  addCircles(data = st_pts) |>
+  addCircles(data = end_pts,
+             color = 'red') |> 
+  addPolylines(data = tracks) |> 
+  addLayersControl(overlayGroups = c('Turbines', 'Exp. Drop Tracks',
+                                     'Development Zone', 'Control Zone'),
+                   options = layersControlOptions(collapsed = FALSE)) |> 
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |> 
+  addMiniMap(zoomLevelFixed = 7)
+
+```
+
+## Fish summary
+
+Fish showed no outward signs of barotrauma beyond (extended stomach, bulging eyes, etc.), though were unable to maintain an upright orientation. All but one black sea bass was jaw-hooked (the least-damaging hook position).
+
+```{r fish-data, echo=FALSE}
+fish <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                   sheet = 'fish')
+
+theme_set(
+  theme_minimal()
+)
+```
+
+Most fish caught were under-sized; the red line shows fish of legal length (\>320 mm).
+
+```{r fish-length, echo=FALSE}
+ggplot(data = filter(fish, species == 'bsb')) +
+  geom_histogram(aes(x = tl_mm), binwidth = 5) +
+  geom_vline(xintercept = 320, color  ='red') +
+  labs(x = 'Total length (mm)', y = 'N')
+```
+
+There were two modes of weights (250 and 500g), but this may be due to the 50g-sensitivity of our spring scale.
+
+```{r fish-weight, echo=FALSE}
+ggplot(data = filter(fish, species == 'bsb')) +
+  geom_histogram(aes(x = weight_g), binwidth = 50) +
+  labs(x = 'Weight (g)', y = 'N')
+```
+
+Lastly, the most experienced fisher (JM, mate of the *F/V Fin Chaser*) caught the most fish. This suggests that angler experience has a notable influence on the number of fish caught.
+
+```{r angler, echo=FALSE}
+ggplot(data = filter(fish, species == 'bsb')) +
+  geom_bar(aes(x = angler_id)) +
+  labs(x = 'Angler', y = 'N')
+```
+
+## Miscellany
+
+-   Crew of the *Fin Chaser* uses the [FISHWEATHER](https://www.fishweather.com/) website to follow fishing conditions
+-   Average transit speed was 9-15 kts
+-   Weight of weighing bucket is 250 g
+-   Spring scale lines are in 50 g increments
+-   Time drops using a stop watch and record running time when fish is hooked/pulled to surface
+-   Use GPS time to mark start of drop
+-   Newer GPS can export tracks in GPX format -- starting and ending a track might be the best way forward
+-   Used Gaia GPS mobile app to record tracks at A5-3 (experimental station). Tracks were unable to be exported from handheld GPS at control station.
+
+## Photographs
+
+### F/V Fin Chaser
+
+![](images/PXL_20220607_100221725.jpg)
+
+Three fishers, conducting repeated drops from the starboard, aft, and port side of the vessel. Rigs consisted of two offset J-hooks, baited with clam. Each drop lasted three minutes and ended for each fisher upon catching a fish.
+
+![](images/PXL_20220607_123052779.jpg)
+
+### Real-time Whale Buoy (RTWB)
+
+![](images/PXL_20220607_153958398.MP.jpg)
+
+![](images/PXL_20220607_154030733.jpg)
