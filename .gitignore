@@ -17,3 +17,6 @@
 *.dbf
 *.cpg
 *.shx
+
+# Embargoed data
+embargo/
