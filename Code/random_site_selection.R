@@ -1,4 +1,4 @@
-library(ggplot2); library(sf)
+library(ggplot2); library(sf); library(TSP)
 
 # Import MD WEA shape
 wea <- st_read('data/geo/offshore wind layers.gdb',
@@ -25,9 +25,13 @@ control <- st_polygon(
 control <- st_sfc(control, crs = 26918)
 
 
-# ggplot() +
-#   geom_sf(data = wea, fill = 'red') +
-#   geom_sf(data = control, fill = 'green') 
+# Add Ocean City, MD
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        site = 'ocmd') %>% 
+  st_transform(26918)
 
 
 # Function to sample points in the polygons that are at least some distance apart
@@ -91,64 +95,66 @@ ctrl_pts$site <- 'control'
 #   geom_sf(data = exp_pts) +
 #   geom_sf(data = ctrl_pts)
 
-# Add Ocean City, MD
-ocmd <- c(-75.10333, 38.32742) %>% 
-  st_point() %>% 
-  st_sfc(crs = 4326) %>% 
-  st_sf(geometry = .,
-        site = 'ocmd') %>% 
-  st_transform(26918)
+
 
 
 sites <- rbind(ocmd,
                exp_pts,
                ctrl_pts)
 
-# Transit times (min) @ 7 kt (Sea born)
-sb_loc <- st_sf(geometry = st_sfc(st_point(c(-75.10333, 38.32742)), crs = 4326) %>% 
-  st_transform(26918))
 
-sites <- rbind(sb_loc, exp_pts, ctrl_pts)
-
-k <- st_distance(sites)
-
-library(TSP)
-atsp <- ATSP(as.dist(k))
-atsp[, 1] <- 0
+# Transit times
+tsp <- TSP(as.dist(st_distance(sites)))
 
 
-initial_tour <- solve_TSP(atsp)
+tour <- solve_TSP(tsp, method = 'farthest_insertion')
 
-tour <- solve_TSP(atsp, method ="two_opt", control = list(tour = initial_tour))
-as.integer(tour)
+# tour <- solve_TSP(tsp, method ="two_opt", control = list(tour = tour))
 
 
-path <- cut_tour(tour, 1, exclude_cut = FALSE)
+path <- c(cut_tour(tour, 1, exclude_cut = FALSE), 1)
+tour_length(tour)
+tour_length(tour) / 1852 / 7
+
 
 ggplot() +
   geom_sf(data = wea, fill = 'red') +
   geom_sf(data = control, fill = 'green') +
   geom_sf(data = exp_pts) +
   geom_sf(data = ctrl_pts) +
-  geom_sf(data = st_sfc(st_cast(do.call(c, st_geometry(sites[path,])), 'LINESTRING'), crs = 26918))
+  geom_sf(data = st_sfc(st_cast(do.call(c, st_geometry(sites[c(path),])), 'LINESTRING'), crs = 26918))
 
+job::job({
 
+times <- replicate(1000, 
+  tryCatch({
+  # Experimental points
+  exp_pts <- dist_sample(wea, 8, 2000)
+  exp_pts$site <- 'experimental'
+  exp_pts <- exp_pts[1:8,]
+  
+  # Control points
+  ctrl_pts <- dist_sample(control, 4, 2000)
+  ctrl_pts$site <- 'control'
+  ctrl_pts <- ctrl_pts[1:4,]
+  # ctrl_pts
+  
+  sites <- rbind(ocmd,
+                 exp_pts,
+                 ctrl_pts)
+  
+  tsp <- TSP(as.dist(st_distance(sites)))
+  
+  tour <- solve_TSP(tsp, method = 'farthest_insertion')
+  tour <- solve_TSP(tsp, method = 'two_opt', control = list(tour = tour))
+  
+  path <- c(cut_tour(tour, 1, exclude_cut = FALSE), 1)
+  # tour_length(tour)
+  tour_length(tour) / 1852 / 7
+  },
+  error = function(e) NA
+))
 
-tsp <- TSP(as.dist(k))
-# atsp[, 1] <- 0
+})
 
-
-initial_tour <- solve_TSP(tsp)
-
-tour <- solve_TSP(tsp, method ="two_opt", control = list(tour = initial_tour))
-as.integer(tour)
-
-
-path <- cut_tour(tour, 1, exclude_cut = F)
-
-ggplot() +
-  geom_sf(data = wea, fill = 'red') +
-  geom_sf(data = control, fill = 'green') +
-  geom_sf(data = exp_pts) +
-  geom_sf(data = ctrl_pts) +
-  geom_sf(data = st_sfc(st_cast(do.call(c, st_geometry(sites[path,])), 'LINESTRING'), crs = 26918))
+hist(times)
