@@ -51,14 +51,13 @@ Wind speed was `r station_data$wind_sp_kts[1]` knots at the control site and `r 
 ## Cruise map
 
 ```{r make-map-data, echo=FALSE, message=FALSE, warning=FALSE}
-library(leaflet)
-
 wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
 
 library(sf)
+library(leaflet)
 library(dplyr)
 library(targets)
-exp_tracks <- lapply(list.files('data/gps 2206', full.names = T),
+exp_tracks <- lapply(list.files('data/gps 2206/raw/rec', full.names = T),
             st_read, layer = 'tracks', quiet = T)
 
 exp_tracks <- exp_tracks |> 
@@ -93,7 +92,9 @@ sites <- data.frame(site = c('ocmd', 'twrecks', 'rtwb', 'a5-3'),
   st_as_sf(coords = c('long', 'lat'), crs = 4326)
 ```
 
-The individual tracks can be seen by zooming in. Note the variability in the real track (see experimental drops) versus point-to-point tracks (see the control sites, where real tracks weren't recorded. Additionally, we can see that we went straight over the control reef, but drifted around a bit at the experimental site.
+The individual tracks can be seen by zooming in. The general sites that were targeted in the cruise are shown in large blue circles, with beginning points for sample drifts represented by small blue circles and end points represented by small red circles. Straight lines link individual sampling events. Actual tracks were recorded at the experimental site at a resolution of 1 sample per 4-10 seconds using a mobile phone app; a new handheld GPS has been purchased to allow this capability for all cruises going forward.
+
+Note the variability in the real track (see experimental drops) versus point-to-point tracks (see the control sites, where real tracks weren't recorded. Additionally, we can see that we went straight over the control reef, but drifted around a bit at the experimental site.
 
 ```{r map, echo=FALSE}
 
