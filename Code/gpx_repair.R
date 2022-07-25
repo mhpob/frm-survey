@@ -1,0 +1,196 @@
+library(sf); library(dplyr); library(xml2)
+
+# https://gdal.org/drivers/vector/gpx.html
+gpx_ext_fix <- function(x){
+  base <- x |> 
+    as.character() |> 
+    read_html() |>  
+    xml_contents() |> 
+    xml_children()
+  
+  conts <- base |> 
+    xml_text() |> 
+    as.list() |> 
+    data.frame() 
+  
+  names(conts) <- xml_name(base)
+  
+  conts
+}
+
+# 0622 Pot cruise ----
+pts <- lapply(
+  list.files('data/gps 2206/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+pts <- pts |> 
+  mutate(name = c('C0622_1',
+                  'C0622_2',
+                  'A-7-6',
+                  'A-9-7',
+                  'C0622_1 block1 deploy',
+                  'C0622_1 first pot',
+                  'C0622_1 last pot',
+                  'C0622_1 block2 deploy',
+                  'C0622_2 block1 deploy',
+                  'C0622_2 first pot', #10
+                  'C0622_2 last pot',
+                  'ERR',
+                  'C0622_2 block2 deploy',
+                  'E0622_1 block1 deploy',
+                  'E0622_1 first pot',
+                  'E0622_1 last pot',
+                  'E0622_1 block2 deploy',
+                  'E0622_2 first pot',
+                  'E0622_2 last pot',
+                  'E0622_2 block2 deploy', #20
+                  'Integrity pots',
+                  'C0622_1 block2 recover',
+                  'C0622_1 block1 recover',
+                  'C0622_2 block2 recover',
+                  'C0622_2 block1 recover',
+                  'E0622_1 block2 recover',
+                  'E0622_1 block1 recover',
+                  'E0622_2 block2 recover'),
+         cmt = c('Target',
+                 'Target',
+                 'Target. E0622_1.',
+                 'Target. E0622_2.',
+                 rep(NA, 9),
+                 rep('A-7-6', 4),
+                 rep('A-9-7', 3),
+                 rep(NA, 5),
+                 rep('A-7-6', 2),
+                 'A-9-6'))
+
+# st_write(pts, 'data/gps 2206/repaired/pot/waypoints_repaired_20220627.gpx')
+
+
+tracks <- lapply(
+  list.files('data/gps 2206/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+st_write(tracks, 'data/gps 2206/repaired/pot/tracks_repaired_20220627_4.gpx',
+         layer = 'tracks',
+         dataset_options =
+           c('GPX_USE_EXTENSIONS=YES',
+             'GPX_EXTENSIONS_NS="gpxtpx"',
+             'GPX_EXTENSIONS_NS_URL="http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd"'))
+
+k <- st_read('data/gps/2206/repaired/pot/tracks_repaired_20220627_3.gpx',
+             layer = 'tracks')
+
+# data.frame(tracks)[1, 'gpxx_TrackExtension'] |> 
+#   read_html() |> 
+#   xml_contents() |> 
+#   xml_children() |> 
+
+
+
+k <- gsub('gpxx:', '', k) |> 
+  read_xml() |>
+  xml_contents() |> 
+  as.character()
+
+track_pts <- lapply(
+  list.files('data/gps 2206/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'track_points', quiet = T) |>
+  bind_rows() 
+
+
+
+### Find transit speed
+library(sf); library(data.table)
+tracks <- st_read(list.files('data/gps 2206/raw/pot', full.names = T, pattern = '^Track.*gpx')[1],
+                  layer = 'track_points', quiet = T)
+
+setDT(tracks)
+
+
+tracks[, lag_pts := shift(st_as_text(geometry))]
+tracks[, lag_dt := shift(time)]
+
+
+tracks <- tracks[!is.na(lag_pts)]
+tracks[, lag_pts := st_as_sfc(lag_pts, crs = 4326)]
+tracks[, dist := st_distance(geometry, lag_pts, by_element = T)]
+tracks[, dt := difftime(time, lag_dt, 'secs')]
+
+tracks[, speed := dist/units::set_units(as.numeric(dt), 'seconds')]
+
+tracks[, spd_kts := units::set_units(speed, 'knots')]
+
+
+
+### 2207 Pot cruise ----
+tracks <- lapply(
+  list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('data/gps/2207/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+pt_key <- read.csv('data/gps/2207/repaired/pot/key_pot_2207.csv',
+                  na.strings = '')
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new')))
+
+st_write(pts, 'data/gps/2207/repaired/pot/waypoints_repaired_20220718.gpx',
+         delete_dsn = T)
+
+
+
+
+### Find transit speed
+library(sf); library(data.table)
+track_pts <- st_read(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx')[1],
+                  layer = 'track_points', quiet = T)
+
+setDT(track_pts)
+
+
+track_pts[, lag_pts := shift(st_as_text(geometry))]
+track_pts[, lag_dt := shift(time)]
+
+
+track_pts <- track_pts[!is.na(lag_pts)]
+track_pts[, lag_pts := st_as_sfc(lag_pts, crs = 4326)]
+track_pts[, dist := st_distance(geometry, lag_pts, by_element = T)]
+track_pts[, dt := difftime(time, lag_dt, 'secs')]
+
+track_pts[, speed := dist/units::set_units(as.numeric(dt), 'seconds')]
+
+track_pts[, spd_kts := units::set_units(speed, 'knots')]
+
+
+k <- lapply(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'), 
+       st_read, layer = 'track_points', quiet = T)
