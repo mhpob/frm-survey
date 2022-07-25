@@ -1,0 +1,225 @@
+---
+title: "Cruise Report: 2022-06-27 : 06-30"
+subtitle: "Pot survey"
+author: "Mike O'Brien (UMCES)"
+format:
+    html:
+      self-contained: true
+echo: false
+editor: visual
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/bsb-trap-survey')
+```
+
+```{r}
+#| message: false
+#| warning: false
+library(sf); library(dplyr); library(leaflet); library(targets);
+library(readxl); library(ggplot2); library(plotly); library(gt)
+
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+
+tar_load(towers)
+zones <- st_read(tar_read(wea_spatial), layer = 'buildout zones', quiet = T)
+ctrl_area <- st_read(tar_read(wea_spatial), layer = 'control area', quiet = T)
+
+
+pts <- read_sf('data/gps 2206/repaired/pot/waypoints_repaired_20220627.gpx',
+               layer = 'waypoints') |> 
+  filter(!name %in% c('ERR', 'Integrity pots')) |> 
+  mutate(grp = case_when(grepl('C.*_1', name) ~ 'Control 1',
+                         grepl('C.*_2', name) ~ 'Control 2',
+                         grepl('E.*_1|A-7', name) ~ 'A-7-6',
+                         grepl('E.*_2|A-9', name) ~ 'A-9-7'),
+         action = case_when(grepl('first|last|deploy', name) ~ 'Deployment',
+                            grepl('recover', name) ~ 'Recovery',
+                            T ~ 'Target'))
+
+tracks <- lapply(list.files('data/gps 2206/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+                     st_read, layer = 'tracks', quiet = T) |>
+  bind_rows() |> 
+  st_cast('LINESTRING') |> 
+  mutate(gpxx_TrackExtension = ifelse(grepl('-29 ', name),
+                                      gsub('Cyan', 'Magenta', gpxx_TrackExtension),
+                                      gpxx_TrackExtension))
+
+cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                   sheet = 'CPUE') |> 
+  rename_all(tolower) |> 
+  mutate(species = factor(species,
+                          levels = c('black sea bass', 'scup' , 'spotted hake',
+                                     'jonah crab', 'tanner crab', 'sand dollar', NA),
+                          ordered = T)) 
+
+measurements <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                            sheet = 'Measurements') |> 
+  rename_all(tolower)
+
+stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                            sheet = 'Station') |> 
+  rename_all(tolower)
+```
+
+## Participants
+
+-   Dave Secor (UMCES)
+-   Mike O'Brien (UMCES)
+-   Capt. Kerry Harrington (*F/V Integrity*)
+-   Jeff (*F/V Integrity*, mate)
+-   Reilly (*F/V Integrity*, mate)
+
+## Pot deployment cruise, 2022-06-29
+
+### Overall
+
+-   02:00 Meet at *F/V Integrity*, load remaining gear and prepare for departure
+-   02:25 Depart dock, transit to **C0622_1** (randomly-selected control site)
+-   04:22 Arrive at **C0622_1**
+    -   04:24 Begin deploying pots
+    -   04:27 Finish deploying pots, transit to **C0622_2** (randomly-selected control site)
+-   05:06 Arrive at **C0622_2**, begin deploying pots
+    -   05:08 Finish deploying pots, transit to **A-7-6** (experimental turbine site)
+-   05:38 Arrive at **A-7-6**, begin deploying pots
+    -   05:41 Finish deploying pots, transit to **A-9-7** (experimental turbine site)
+-   05:59 Arrive at **A-9-7**, begin deploying pots
+    -   06:03 Finish deploying pots, transit to *F/V Integrity* fishing grounds
+-   07:00 - 14:00 Fish commercial pots
+    -   14:00 End fishing, return to West Ocean City, MD
+-   16:30 Arrive in West Ocean City, MD
+
+### Description
+
+#### Survey deployment
+
+Wind speed was \<5 knots, coming from the southwest (as reported by Capt. Harrington). Waves were flat, building to 1 ft. Cloud cover was 8-9 tenths of the sky. As control sites were slightly more-inshore, depths were shallower: 82 ft at the control sites compared to 97 ft at the turbine sites.
+
+During transit to the first site, the *Integrity*'s speed was 7.6 - 9.4 kts, with an average of speed of 8.3 kts. Transit time to the first site is slightly inflated as the vessel was slowed for the last few miles in an attempt to wait for light. Each pot was deployed when the section of line between successive pots became taught. The vessel moved at approximately 5 knots during deployment, and so strings were deployed quickly and in a straight line (see [map](#cruise-map)).
+
+#### Commercial fishing {#commercial-fishing}
+
+Commercial fishing was conducted about 25 miles offshore in approximately 130 feet of water. Strings of pots were mostly recovered southward from the northernmost-point, though there were a few west-east strings. Pots were stacked on deck, then redeployed in the original direction after the complete string was recovered. Catch consisted primarily of Jonah crabs, black sea bass, and American lobster, with an assortment of spotted hake, tanner crabs, summer flounder and scup. Obviously-legal fish were thrown into baskets by species, with others retained for sorting until the pots were redeployed.
+
+Recovery began by locating the marking buoy. Capt. Harrington targeted the northernmost buoy -- it's unclear if this was due to wind/currents or by habit. The buoy was brought onboard far-enough that the buoy line could be run through the pot hauler (starboard), which was used to pull the line onboard. The buoy was taken to the back of the vessel. A chain located 8 fa below the buoy was then pulled back to the buoy, allowing the line to flake aft-forward-aft. The "block", a cinder block filled with cement (c 65 lbs) and used as an anchor, was also pulled to the back of the vessel. The buoy line was thus flaked to the port side of the working area -- ground line would be flaked to the starboard side.
+
+As pots came onboard, they were rested on two sets of two stacked [fish totes](https://www.fishtotes.com/product-item/70liter-fish-totes-vertical-ribs/) near the pot hauler. The pot was opened, with lobster immediately removed and put on ice. Fish were thrown into the fish totes; Jonah crabs had a claw removed and placed on ice, and the crab was thrown back. The empty pot was optionally re-baited and moved to the back of the vessel. Pots were stacked three high with successive rows moving forward; snoods faced the starboard side of the vessel. Tension was taken out of the snoods so they hung loosely, and the ground line ran along the starboard side of the vessel to a large pile formed as the line ran off the pot hauler. Recovery concluded by the second block being brought onboard and set on the gunwale by the stack of pots.
+
+Re-deployment started from the southern end of the line. The southern buoy was thrown overboard as the captain ran parallel to the line's location. As the vessel came around, the captain would call for the block to be dropped overboard. The captain continued along his chosen course and the line was pulled overboard. The mate would then set the last pot brought in on the gunwale and shove it overboard as the ground line ran out of slack. The recovery process was then completed in reverse, with the mate shoving a pot off the gunwale as the ground line ran out.
+
+After re-deployment, the mates sort the fish and put bands on the lobsters' claws. The mate provides an approximate weight of the fish to the captain and puts them in a large bin of ice.
+
+## Pot recovery cruise, 2022-06-30
+
+### Overall
+
+-   03:00 Meet at *F/V Integrity*, load remaining gear and prepare for departure
+-   03:20 Depart dock, transit to **C0622_1**
+-   05:05 Arrive **C0622_1**.
+    -   05:08 Begin pot recovery approach.
+    -   05:11 Northern trawl anchor ("block") recovered.
+    -   05:22 Southern block recovered; pot recovery complete. Transit to **C0622_2.**
+-   05:56 Arrive **C0622_2**. Begin pot recovery approach.
+    -   05:58 Northern block recovered.
+    -   06:06 Southern block recovered; pot recovery complete. Transit to **A-7-6**.
+-   06:37 Arrive **A-7-6**. Begin pot recovery approach.
+    -   06:39 Northern block recovered.
+    -   06:47 Southern block recovered; pot recovery complete. Transit to **A-9-7**.
+-   07:03 Arrive **A-9-7**. Begin pot recovery approach.
+    -   07:05 Northern block recovered.
+    -   07:13 Southern block recovered; pot recovery complete. Return to West Ocean City, MD.
+-   09:50 Arrive in West Ocean City, MD.
+
+### Description
+
+Dock departure was pushed back an hour due to the previous day's early arrival. Wind speed was 10-15 knots, coming from the southwest (as reported by Capt. Harrington). Waves were 2-3 feet, building to 3 ft, with swells near 4 ft. Cloud cover was 1 tenth of the sky.
+
+Pots were recovered in the same manner as outlined in the [commercial fishing section](#commercial-fishing).
+
+M. O'Brien monitored species catch per pot as pots were recovered. Mates Jeff and Reilly placed fish from the first 6 pots (the "near" pots) in one fish tote and fish from the subsequent 9 pots ("far" pots) in another. Due to how the pot strings were recovered, the "near" pots were the 6 northernmost pots, and the "far" pots the 9 southernmost. Dominant species were black sea bass (26) and Jonah Crab (22), with scup, spotted hake, tanner crabs, sand dollars, and snails also present. Interestingly, snails had already laid a clutch of eggs on many of the pots. 16 of the 60 deployed pots were empty. There was no significant difference between control and turbine sites or near and far sections of the lines ($\chi$-squared, $p >$ 0.05)
+
+D. Secor measured the total length (mm) and weight (g) of black sea bass, culling the first ten from each "near" and "far" section and releasing the others. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from 180 - 295 mm, with a mean of 216 mm (minimum legal size 280 mm). Weights ranged from 80 - 390 g, mean of 173 g. There were no significant differences in length or weight between control and turbine sites or near and far sections of the lines (ANOVA, $p >$ 0.05).
+
+Catch and size data summaries are shown in the [sample summary section](#sample-summary) below.
+
+## Station information
+
+```{r}
+stations |>
+  knitr::kable(padding = 0) |> 
+  kableExtra::kable_styling(font_size = 12)
+```
+
+## Cruise map {#cruise-map}
+
+```{r}
+#| label: cruise-map
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 11) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |>
+  addCircleMarkers(data = pts, label = ~ name,
+                   clusterId = ~ grp,
+                   color = ~ colorFactor(c('red', 'blue', 'green'), pts$action)(action),
+                   clusterOptions = markerClusterOptions(
+                     disableClusteringAtZoom = 15,
+                     zoomToBoundsOnClick = T),
+                   group = 'Waypoints') |> 
+  addPolylines(data = filter(tracks, grepl('06-29', name)),
+               color = ~ 'Magenta',
+               group = 'Deployment tracks') |>
+  addPolylines(data = filter(tracks, grepl('06-30', name)),
+               color = 'Cyan',
+               group = 'Recovery tracks') |>
+  addPolygons(data = zones, color = c('red', 'yellow', 'green'),
+              group = 'Development Zone') |>
+  addPolygons(data = ctrl_area, color = 'gray', group = 'Control Zone') |>
+  addCircles(data = towers,
+             color = 'red', radius = 20, group = 'Turbines') |> 
+  addLayersControl(overlayGroups = c('Waypoints', 'Deployment tracks', 'Recovery tracks',
+                                     'Turbines', 'Development Zone', 'Control Zone'),
+                   options = layersControlOptions(collapsed = FALSE)) |>
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```
+
+## Sample summary {#sample-summary}
+
+### Catch
+
+The blank bars on the right show the count of pots with no catch.
+
+```{r}
+ggplotly(
+  ggplot(data = cpue) +
+    geom_bar(aes(x = species)) +
+    scale_y_continuous(breaks = seq(0, 10, 2)) +
+    facet_grid(station ~ `near/far`) +
+    theme(axis.text.x = element_text(angle = -30))
+)
+```
+
+### Fish measurements
+
+#### Total length (mm)
+
+```{r}
+ggplotly(
+  ggplot(data = filter(measurements, species == 'black sea bass')) +
+    geom_histogram(aes(x = tl_mm, fill = retained), binwidth = 10) +
+    facet_grid(station ~ `near/far`) 
+)
+```
+
+#### Weight (g)
+
+```{r}
+ggplotly(
+  ggplot(data = filter(measurements, species == 'black sea bass')) +
+    geom_histogram(aes(x = wt_g, fill = retained), binwidth = 20) +
+    facet_grid(station ~ `near/far`)
+)
+```
