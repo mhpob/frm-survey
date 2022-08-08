@@ -84,7 +84,9 @@ tracks <- lapply(list.files('data/gps/2207/raw/pot', full.names = T,
 cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
                    sheet = 'CPUE',
                    na = c('', 'NA')) |> 
-  rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  rename_all(function(.) tolower(gsub('[ \\/]', '_', .)))
+
+cpue_202207 <- cpue |> 
   filter(between(recover_date,
                  as.POSIXct('2022-07-19'),
                  as.POSIXct('2022-07-21'))) |> 
@@ -92,11 +94,11 @@ cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
                           levels = c('black sea bass', 'seahorse', 'jonah crab',
                                      'sand dollar', 'sea star', NA),
                           ordered = T)) 
-cpue_tally <- cpue |>
+cpue_tally <- cpue_202207 |>
   group_by(species) |>
   tally()
 
-n_pots <- cpue |>
+n_pots <- cpue_202207 |>
   group_by(station) |>
   distinct(pot_number) |>
   nrow()
@@ -250,12 +252,37 @@ leaflet() |>
 
 ### Catch
 
+```{r}
+#| message: false
+cpue |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         month = month.name[data.table::month(recover_date)],
+         month = factor(month, levels = month.name, ordered = T)) |> 
+  filter(species == 'black sea bass') |> 
+  group_by(month, stratum, near_far) |> 
+  summarise(N = sum(catch, na.rm = T),
+            min = min(catch, na.rm = T),
+            average = round(mean(catch, na.rm = T),1),
+            max = max(catch, na.rm = T),
+            sd = round(sd(catch, na.rm = T), 2)) |>
+  gt(groupname_col = c('month', 'stratum'),
+     rowname_col = c('near_far')) |> 
+  tab_options(row_group.as_column = TRUE) |> 
+  summary_rows(groups = T, fns = c(Total = 'sum'),
+               columns = N, missing_text = '',
+               decimals = 0) |> 
+  as_raw_html()
+  
+```
+
+#### July 2022 catch
+
 The blank bars on the right show the count of pots with no catch.
 
 ```{r}
 #| label: catch-plot
 ggplotly(
-  ggplot(data = cpue) +
+  ggplot(data = cpue_202207) +
     geom_bar(aes(x = species)) +
     scale_y_continuous(breaks = seq(0, 10, 2)) +
     facet_grid(station ~ near_far) +
