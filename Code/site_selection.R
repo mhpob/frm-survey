@@ -30,7 +30,10 @@
 # n_exp <- 3
 
 #### August 2022 ----
-set.seed(20220801)
+# set.seed(20220801)
+
+#### September 2022 ----
+set.seed(20220829)
 
 #NEED: 2 sites control, 4 sites experimental
 n_control <- 2
