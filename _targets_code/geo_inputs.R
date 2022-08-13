@@ -1,4 +1,4 @@
-
+# 
 add_buildout_zones <- function(wea_spatial){
   library(lwgeom)
   
@@ -16,26 +16,19 @@ add_buildout_zones <- function(wea_spatial){
   
 
   wea <- st_read(wea_spatial,
-                 query = "select * from BOEM_Wind_Leases_as_of_Aug_3_2021 where State = 'Maryland'",
+                 query = "select * from BOEMWindLeases_6_30_2022 where State = 'Maryland'",
                  quiet = T)
-  wea <- st_transform(wea, 4326)
+  # wea <- st_transform(wea, 4326)
   wea <- st_buffer(wea, 1)
   wea_split <- st_union(wea)
   wea_split <- st_split(wea_split, st_geometry(dev_lines))
   wea_split <- st_collection_extract(wea_split)
   wea_split <- st_as_sf(wea_split)
-  wea_split$dev_zone <- c('A', 'B', 'C')
+  wea_split$zone <- c('A', 'B', 'C')
   
-  st_write(wea,
-    'data/geo/wea.gpkg',
-    layer = 'lease blocks',
-    append = F)
-  st_write(wea_split,
-           'data/geo/wea.gpkg',
-           layer = 'buildout zones',
-           append = F)
+  st_write(wea_split, 'data/geo/usw_buildout_zones.gpkg')
   
-  'data/geo/wea.gpkg'
+  'data/geo/usw_buildout_zones.gpkg'
 }
 
 add_control_area <- function(wea){
