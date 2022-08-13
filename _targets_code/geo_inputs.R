@@ -33,7 +33,7 @@ add_buildout_zones <- function(wea_spatial){
 
 add_control_area <- function(wea){
   
-  wea <- st_read(wea, layer = 'lease blocks')
+  wea <- st_read('data/geo/boemwindlayers_4download.gpkg', query = "select* from BOEMWindLeases_6_30_2022 where State = 'Maryland'")
   
   cntrl_hgt <- (st_bbox(wea)$ymax - st_bbox(wea)$ymin) / 3
   
@@ -51,11 +51,9 @@ add_control_area <- function(wea){
     st_sfc(crs = 4326)
   
   st_write(control,
-           'data/geo/wea.gpkg',
-           layer = 'control area',
-           append = F)
+           'data/geo/frm_control.gpkg')
   
-  'data/geo/wea.gpkg'
+  'data/geo/frm_control.gpkg'
   
 }
 
