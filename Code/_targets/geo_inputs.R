@@ -1,5 +1,5 @@
 # 
-add_buildout_zones <- function(wea_spatial){
+add_buildout_zones <- function(boem_weas){
   library(lwgeom)
   
   # Development sequence lines
@@ -15,7 +15,7 @@ add_buildout_zones <- function(wea_spatial){
   dev_lines <-  st_as_sf(st_sfc(ab_line, bc_line, crs = 4326))
   
 
-  wea <- st_read(wea_spatial,
+  wea <- st_read(boem_weas,
                  query = "select * from BOEMWindLeases_6_30_2022 where State = 'Maryland'",
                  quiet = T)
   # wea <- st_transform(wea, 4326)
@@ -26,14 +26,19 @@ add_buildout_zones <- function(wea_spatial){
   wea_split <- st_as_sf(wea_split)
   wea_split$zone <- c('A', 'B', 'C')
   
-  st_write(wea_split, 'data/geo/usw_buildout_zones.gpkg')
+  st_write(wea_split,
+           'data/geo/usw_buildout_zones.gpkg',
+           delete_layer = TRUE)
   
   'data/geo/usw_buildout_zones.gpkg'
 }
 
-add_control_area <- function(wea){
+
+
+add_control_area <- function(boem_weas){
   
-  wea <- st_read('data/geo/boemwindlayers_4download.gpkg', query = "select* from BOEMWindLeases_6_30_2022 where State = 'Maryland'")
+  wea <- st_read(boem_weas,
+                 query = "select* from BOEMWindLeases_6_30_2022 where State = 'Maryland'")
   
   cntrl_hgt <- (st_bbox(wea)$ymax - st_bbox(wea)$ymin) / 3
   
@@ -51,25 +56,9 @@ add_control_area <- function(wea){
     st_sfc(crs = 4326)
   
   st_write(control,
-           'data/geo/frm_control.gpkg')
+           'data/geo/frm_control.gpkg',
+           delete_layer = TRUE)
   
   'data/geo/frm_control.gpkg'
   
-}
-
-
-tower_stations <- function(){
-  towers <- st_read('embargo/USWind_PDE-Locations_2022-0111.kml',
-                    layer = 'WTG_Layout_2022_0111', 
-                    fid_column_name = 'fid',
-                    quiet = T) |> 
-    st_zm()
-  
-  codes <- read.csv('data/geo/station_coding_key.csv') |> 
-    mutate(fid = as.character(fid))
-  
-  towers <- left_join(towers, codes) |> 
-    select(station)
-  
-  towers
 }
