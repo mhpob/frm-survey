@@ -1,0 +1,10 @@
+project:
+   title: "frm-survey"
+   execute-dir: project
+
+author: "Mike O'Brien (UMCES)"
+format:
+    html:
+      self-contained: true
+fontsize: 16px
+editor: visual
