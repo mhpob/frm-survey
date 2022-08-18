@@ -148,7 +148,7 @@ ggplot() +
 setDT(stations)[, ':='(lon = st_coordinates(geometry)[,1],
                        lat = st_coordinates(geometry)[,2])]
 dm <- function(x){
-  paste(as.integer(x), round((abs(x) %% 1) * 60, 3))
+  paste(as.integer(x), round((abs(x) %% 1) * 60, 4))
 }
 stations[, ':='(lon_dm = dm(lon),
                 lat_dm = dm(lat))]
