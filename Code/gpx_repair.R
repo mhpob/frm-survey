@@ -18,6 +18,182 @@ gpx_ext_fix <- function(x){
   conts
 }
 
+
+
+# 2208 rec cruise ----
+tracks <- lapply(
+  list.files('embargo/gps/2208/raw/rec', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('embargo/gps/2208/raw/rec', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = ''),
+#           'embargo/gps/2208/repaired/rec/_key_rec_2208.csv',
+#           row.names = FALSE, na = '')
+# mapview::mapview(pts) + mapview::mapview(tracks)
+
+pt_key <- read.csv('embargo/gps/2208/repaired/rec/key_rec_2208.csv',
+                   na.strings = '') |> 
+  filter(new_name != 'ERR')
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new')))
+
+st_write(pts, 'embargo/gps/2208/repaired/rec/waypoints_repaired_20220815.gpx',
+         delete_dsn = T)
+
+
+
+## update raw data gdrive spreadsheet
+kk <- lapply(list.files('embargo/gps/2208/raw/rec', full.names = T, pattern = '^Track.*gpx'), 
+             st_read, layer = 'track_points', quiet = T)
+k <- function(.) {
+  hold <- st_coordinates(kk[[.]][c(1, nrow(kk[[.]])),])
+  writeClipboard(rep(paste(c(hold[1,],'','','', hold[2,]), collapse = ','),
+                     times = 3))
+}
+
+
+
+
+
+
+
+# 2208 pot cruise ----
+tracks <- lapply(
+  list.files('embargo/gps/2208/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('embargo/gps/2208/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = ''),
+#           'data/gps/2208/repaired/pot/_key_pot_2208.csv',
+#           row.names = FALSE, na = '')
+# mapview::mapview(pts) + mapview::mapview(tracks)
+
+pt_key <- read.csv('embargo/gps/2208/repaired/pot/key_pot_2208.csv',
+                   na.strings = '') |> 
+  filter(new_name != 'ERR')
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new')))
+
+st_write(pts, 'embargo/gps/2208/repaired/pot/waypoints_repaired_20220801.gpx',
+         delete_dsn = T)
+
+
+
+
+
+
+
+kk <- lapply(list.files('data/gps/2208/raw/pot', full.names = T, pattern = '^Track.*gpx'), 
+             st_read, layer = 'track_points', quiet = T)
+
+
+# 2207 Pot cruise ----
+tracks <- lapply(
+  list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('data/gps/2207/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+pt_key <- read.csv('data/gps/2207/repaired/pot/key_pot_2207.csv',
+                   na.strings = '')
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new')))
+
+st_write(pts, 'data/gps/2207/repaired/pot/waypoints_repaired_20220718.gpx',
+         delete_dsn = T)
+
+
+
+
+### Find transit speed
+library(sf); library(data.table)
+track_pts <- st_read(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx')[1],
+                     layer = 'track_points', quiet = T)
+
+setDT(track_pts)
+
+
+track_pts[, lag_pts := shift(st_as_text(geometry))]
+track_pts[, lag_dt := shift(time)]
+
+
+track_pts <- track_pts[!is.na(lag_pts)]
+track_pts[, lag_pts := st_as_sfc(lag_pts, crs = 4326)]
+track_pts[, dist := st_distance(geometry, lag_pts, by_element = T)]
+track_pts[, dt := difftime(time, lag_dt, 'secs')]
+
+track_pts[, speed := dist/units::set_units(as.numeric(dt), 'seconds')]
+
+track_pts[, spd_kts := units::set_units(speed, 'knots')]
+
+
+k <- lapply(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'), 
+            st_read, layer = 'track_points', quiet = T)
+
+
+
 # 0622 Pot cruise ----
 pts <- lapply(
   list.files('data/gps 2206/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
@@ -134,114 +310,5 @@ tracks[, spd_kts := units::set_units(speed, 'knots')]
 
 
 
-# 2207 Pot cruise ----
-tracks <- lapply(
-  list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'),
-  st_read,
-  layer = 'tracks', quiet = T) |>
-  bind_rows() |>
-  
-  # pull out "fit" information
-  rowwise() |>
-  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
-         gpx_ext_fix(gpxx_TrackExtension)) |> 
-  select_at(vars(-starts_with('gpx')))
 
 
-pts <- lapply(
-  list.files('data/gps/2207/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
-  read_sf,
-  layer = 'waypoints'
-) |> 
-  bind_rows()
-
-pt_key <- read.csv('data/gps/2207/repaired/pot/key_pot_2207.csv',
-                   na.strings = '')
-
-pts <- pts |> 
-  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
-  mutate(name = new_name,
-         cmt = new_cmt) |> 
-  select_at(vars(-starts_with('new')))
-
-st_write(pts, 'data/gps/2207/repaired/pot/waypoints_repaired_20220718.gpx',
-         delete_dsn = T)
-
-
-
-
-### Find transit speed
-library(sf); library(data.table)
-track_pts <- st_read(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx')[1],
-                     layer = 'track_points', quiet = T)
-
-setDT(track_pts)
-
-
-track_pts[, lag_pts := shift(st_as_text(geometry))]
-track_pts[, lag_dt := shift(time)]
-
-
-track_pts <- track_pts[!is.na(lag_pts)]
-track_pts[, lag_pts := st_as_sfc(lag_pts, crs = 4326)]
-track_pts[, dist := st_distance(geometry, lag_pts, by_element = T)]
-track_pts[, dt := difftime(time, lag_dt, 'secs')]
-
-track_pts[, speed := dist/units::set_units(as.numeric(dt), 'seconds')]
-
-track_pts[, spd_kts := units::set_units(speed, 'knots')]
-
-
-k <- lapply(list.files('data/gps/2207/raw/pot', full.names = T, pattern = '^Track.*gpx'), 
-            st_read, layer = 'track_points', quiet = T)
-
-# 2208 pot cruise ----
-tracks <- lapply(
-  list.files('data/gps/2208/raw/pot', full.names = T, pattern = '^Track.*gpx'),
-  st_read,
-  layer = 'tracks', quiet = T) |>
-  bind_rows() |>
-  
-  # pull out "fit" information
-  rowwise() |>
-  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
-         gpx_ext_fix(gpxx_TrackExtension)) |> 
-  select_at(vars(-starts_with('gpx')))
-
-
-pts <- lapply(
-  list.files('data/gps/2208/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
-  read_sf,
-  layer = 'waypoints'
-) |> 
-  bind_rows()
-
-# write.csv(data.frame(original_name = pts$name,
-#                      new_name = '',
-#                      original_cmt = pts$cmt,
-#                      new_cmt = ''),
-#           'data/gps/2208/repaired/pot/_key_pot_2208.csv',
-#           row.names = FALSE, na = '')
-# mapview::mapview(pts) + mapview::mapview(tracks)
-
-pt_key <- read.csv('data/gps/2208/repaired/pot/key_pot_2208.csv',
-                   na.strings = '') |> 
-  filter(new_name != 'ERR')
-
-pts <- pts |> 
-  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
-  mutate(name = new_name,
-         cmt = new_cmt) |> 
-  select_at(vars(-starts_with('new')))
-
-st_write(pts, 'data/gps/2208/repaired/pot/waypoints_repaired_20220801.gpx',
-         delete_dsn = T)
-
-
-
-
-
-
-
-kk <- lapply(list.files('data/gps/2208/raw/pot', full.names = T, pattern = '^Track.*gpx'), 
-            st_read, layer = 'track_points', quiet = T)
