@@ -24,7 +24,7 @@ add_buildout_zones <- function(boem_weas){
   wea_split <- st_split(wea_split, st_geometry(dev_lines))
   wea_split <- st_collection_extract(wea_split)
   wea_split <- st_as_sf(wea_split)
-  wea_split$zone <- c('A', 'B', 'C')
+  wea_split$zone <- c('C', 'B', 'A')
   
   st_write(wea_split,
            'data/geo/usw_buildout_zones.gpkg',
