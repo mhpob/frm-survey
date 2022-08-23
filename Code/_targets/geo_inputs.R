@@ -55,6 +55,27 @@ add_control_area <- function(boem_weas){
   ) |> 
     st_sfc(crs = 4326)
   
+  # Create a polygon representing the "cable pile"; a "fish haven" in the NOAA charts
+  cable_pile <- st_polygon(
+    list(
+      matrix(
+        c(
+          -74.741652100,38.200013200,
+          -74.741699700,38.216638800,
+          -74.721753200,38.216601400,
+          -74.721753200,38.200013201,
+          -74.741652100,38.200013200
+        ),
+        ncol = 2,
+        byrow = TRUE
+      )
+    )
+  ) |> 
+    st_sfc(crs = 4326)
+  
+  # Remove cable pile from the control area
+  control <- st_difference(control, cable_pile)
+  
   st_write(control,
            'data/geo/frm_control.gpkg',
            delete_layer = TRUE)
