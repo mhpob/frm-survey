@@ -1,5 +1,5 @@
 ---
-title: "Cruise Report: 2022-07-18 : 07-21"
+title: "Cruise Report: 2022-08-01 : 08-03"
 subtitle: "Pot survey"
 author: "Mike O'Brien (UMCES)"
 format:
@@ -7,18 +7,27 @@ format:
       self-contained: true
 echo: false
 editor: visual
+params:
+  st_date: '2022-08-01'
+  end_date: '2022-08-03'
 ---
-
-```{r, setup, include=FALSE}
-knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/bsb-trap-survey')
-```
 
 ```{r}
 #| message: false
 #| warning: false
 #| label: packages
+
 library(sf); library(dplyr); library(leaflet); library(targets); library(xml2)
 library(readxl); library(ggplot2); library(plotly); library(gt)
+```
+
+```{r}
+#| label: parameters
+
+# params <- list(st_date = '2022-08-01',
+#                end_date = '2022-08-03')
+
+cruise_id <- gsub('20|-|\\d{2}$', '', params$st_date)
 
 ```
 
@@ -26,15 +35,27 @@ library(readxl); library(ggplot2); library(plotly); library(gt)
 #| label: geo-base
 wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
 
-tar_load(towers)
-zones <- st_read(tar_read(wea_spatial), layer = 'buildout zones', quiet = T)
-ctrl_area <- st_read(tar_read(wea_spatial), layer = 'control area', quiet = T)
+towers <- st_read(tar_read(usw_locations),
+                  layer = 'WTG_Layout_2022_0111',
+                  quiet = T)
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+ctrl_area <- st_read(tar_read(frm_control),
+                     quiet = T)
 ```
 
 ```{r}
 #| label: waypoints
-pts <- read_sf('data/gps/2207/repaired/pot/waypoints_repaired_20220718.gpx',
-               layer = 'waypoints') |> 
+pts <- read_sf(
+  file.path('embargo/gps',
+            cruise_id,
+            'repaired/pot',
+            paste0('waypoints_repaired_', 
+                   gsub('-', '', params$st_date),
+                   '.gpx')
+            ),
+  layer = 'waypoints') |> 
+  
   mutate(grp = case_when(grepl('C.*-1', name) ~ 'Control 1',
                          grepl('C.*-2', name) ~ 'Control 2',
                          T ~ gsub(' .*', '', name)),
@@ -63,10 +84,15 @@ gpx_ext_fix <- function(x){
   conts
 }
 
-tracks <- lapply(list.files('data/gps/2207/raw/pot', full.names = T,
-                            pattern = '^Track.*gpx'),
-                     st_read, layer = 'tracks', quiet = T) |>
-    bind_rows() |>
+tracks <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/pot'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'tracks', quiet = T
+) |>
+  bind_rows() |>
   
   # pull out "fit" information
   rowwise() |>
@@ -77,6 +103,15 @@ tracks <- lapply(list.files('data/gps/2207/raw/pot', full.names = T,
   mutate(displaycolor = ifelse(grepl('-20 ', name),
                                       gsub('Cyan', 'Magenta', displaycolor),
                                       displaycolor))
+
+track_points <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/pot'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'track_points', quiet = T
+)
 ```
 
 ```{r}
@@ -84,33 +119,43 @@ tracks <- lapply(list.files('data/gps/2207/raw/pot', full.names = T,
 cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
                    sheet = 'CPUE',
                    na = c('', 'NA')) |> 
-  rename_all(function(.) tolower(gsub('[ \\/]', '_', .)))
+  rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         month = month.name[data.table::month(recover_date)],
+         month = factor(month, levels = month.name, ordered = T))
 
-cpue_202207 <- cpue |> 
+cpue_subset <- cpue |> 
   filter(between(recover_date,
-                 as.POSIXct('2022-07-19'),
-                 as.POSIXct('2022-07-21'))) |> 
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date))) |> 
   mutate(species = factor(species,
-                          levels = c('black sea bass', 'seahorse', 'jonah crab',
+                          levels = c('black sea bass', 'seahorse',
+                                     'jonah crab', 'mud crab',
                                      'sand dollar', 'sea star', NA),
                           ordered = T)) 
-cpue_tally <- cpue_202207 |>
+cpue_tally <- cpue_subset |>
   group_by(species) |>
   tally()
 
-n_pots <- cpue_202207 |>
+n_pots <- cpue_subset |>
   group_by(station) |>
   distinct(pot_number) |>
   nrow()
 
 
-measurements <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+measures <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
                             sheet = 'Measurements',
                            na = c('', 'NA')) |> 
   rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         month = month.name[data.table::month(date)],
+         month = factor(month, levels = month.name, ordered = T))
+
+measures_subset <- measures |> 
   filter(between(date,
-                 as.POSIXct('2022-07-19'),
-                 as.POSIXct('2022-07-21'))) 
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date))) 
+  
 
 stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
                             sheet = 'Station') |> 
@@ -118,84 +163,114 @@ stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
   mutate(datetime = as.POSIXct(gsub(':00$', '00', datetime), 
                                format = '%Y-%m-%dT%T %z')) |> 
   filter(between(datetime,
-                 as.POSIXct('2022-07-19'),
-                 as.POSIXct('2022-07-21'))) 
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date))) 
 ```
 
 ## Participants
 
 -   Dave Secor (UMCES)
 -   Mike O'Brien (UMCES)
--   Capt. Brendan Harrington (*F/V Integrity*)
+-   Capt. Kerry Harrington (*F/V Integrity*)
 -   Reilly (*F/V Integrity*, mate)
+-   Lucas (*F/V Integrity*, mate)
 
-## Pot deployment cruise, 2022-07-19
+## Pot deployment cruise, 2022-08-02
 
 ### Overall
 
--   06:30 Meet at *F/V Integrity*, load remaining gear and prepare for departure
--   06:40 Depart dock, transit to **C0622_1** (randomly-selected control site)
--   09:09 Arrive at **C0622_1**
-    -   09:10 Begin deploying pots
-    -   09:13 Finish deploying pots, transit to **C0622_2** (randomly-selected control site)
--   09:35 Arrive at **C0622_2**, begin deploying pots
-    -   09:38 Begin deploying pots
-    -   09:42 Finish deploying pots, transit to **A-5-2** (experimental turbine site)
--   10:13 Arrive at **A-5-2**, begin deploying pots
-    -   10:16 Begin deploying pots
-    -   10:19 Finish deploying pots, transit to **A-9-6** (experimental turbine site)
--   10:40 Arrive at **A-9-6**, begin deploying pots
-    -   10:42 Begin deploying pots
-    -   10:45 Finish deploying pots, transit to **A-9-2** (experimental turbine site)
--   11:12 Arrive at **A-9-2**, begin deploying pots
-    -   11:14 Begin deploying pots
-    -   11:17 Finish deploying pots, return to West Ocean City, MD
--   13:37 Arrive in West Ocean City, MD
+-   03:00 Meet at *F/V Integrity*, load remaining gear and prepare for departure.
+-   03:30 Depart dock, transit to **J06** (experimental turbine site).
+-   05:46 Arrive at **J06** (formerly A-9-2).
+    -   05:49 Begin deploying pots.
+    -   05:52 Finish deploying pots, transit to **N12** (experimental turbine site).
+-   06:41 Arrive at **N12** (formerly A-5-4).
+    -   06:44 Begin deploying pots.
+    -   06:47 Finish deploying pots, transit to **L12** (experimental turbine site).
+-   07:05 Arrive at **L12** (formerly A-7-6).
+    -   07:06 Begin deploying pots.
+    -   07:09 Finish deploying pots, transit to **J12** (experimental turbine site).
+-   07:26 Arrive at **J12** (formerly A-9-8).
+    -   07:26 Begin deploying pots.
+    -   07:28 Finish deploying pots, transit to **C02208_2** (randomly-selected control site).
+-   07:54 Arrive at **C02208_2**.
+    -   07:55 Begin deploying pots.
+    -   07:58 Finish deploying pots, transit to **C0822_1** (altered from randomly-selected control site).
+-   08:21 Arrive at **C0822_1**.
+    -   08:21 Begin deploying pots.
+    -   08:24 Finish deploying pots, transit to *F/V Integrity* fishing grounds.
+-   13:40 End fishing, return to West Ocean City, MD.
+-   16:30 Arrive in West Ocean City, MD.
 
 ### Description
 
 #### Survey deployment
 
-Wind speed was \<5 knots, coming from the southwest (as reported by Capt. Harrington). Waves were 3-4 ft with swells near 5 feet. Cloud cover was 3 tenths of the sky. Control sites ranged in depth from 110 - 110 ft, with turbine sites ranging from 90 - 110 ft.
+Capt. Kerry Harrington and mate Reilly stacked the pots on the boat from 13:00 - 19:00 on 1 August. Ground line between pots was coiled and placed into the next pot in the sequence. Capt. Harrington brought on a more-experienced hand, Lucas, to deploy research pots and fish *Integrity* pots.
 
-During transit to the first site, the *Integrity*'s speed was 7.1 - 8.9 kts, with an average of speed of 7.86 kts.
+Wind speed was 10-5 knots, coming from the southwest (as reported by Capt. Harrington). Waves were 2-3 ft. Cloud cover was 30-50% of the sky. Control sites ranged in depth from 97 - 101 ft, with turbine sites ranging from 79 - 115 ft.
 
-Capt. B. Harrington and mate stacked the pots on the boat starting at 04:00 on July 19. Ground line between pots was coiled and placed into the next pot in the sequence. At least two pots were accidentially not attached to the ground line during this process. This may have been part of the reason for pot losses noted during [recovery](#pot-recovery-description).
+Random site selection seemed suspect, with sites largely a repeat of the previous cruise. After deploying C2208_2 pots, we decided to move the C2208_1 site to a location 2 nautical miles SW of C2208_1.
 
-## Pot recovery cruise, 2022-06-30
+## Pot recovery cruise, 2022-08-03
 
 ### Overall
 
--   02:30 Meet at *F/V Integrity*, await arrival of captain and mate
--   03:21 Mate does not show. Depart dock, transit to **C0622_1**
--   05:46 Arrive **C0622_1**.
-    -   05:51 Northern trawl anchor ("block") recovered.
-    -   06:02 Pot recovery complete. Transit to **C0622_2**.
--   06:34 Arrive **C0622_2**. Begin pot recovery approach.
-    -   06:35 Northern block recovered.
-    -   06:46 Pot recovery complete. Transit to **A-5-2**.
--   07:29 Arrive **A-5-2**. Begin pot recovery approach.
-    -   07:31 Western block recovered.
-    -   07:41 Southern block recovered; pot recovery complete. Transit to **A-9-6**.
--   08:12 Arrive **A-9-6**. Begin pot recovery approach.
-    -   08:13 Northern block recovered.
-    -   08:23 Pot recovery complete. Transit to **A-9-2**.
--   09:05 Arrive **A-9-2**. Begin pot recovery approach.
-    -   09:06 Northern block recovered.
-    -   09:18 Pot recovery complete. Return to West Ocean City, MD.
--   12:00 Arrive in West Ocean City, MD.
+-   03:00 Meet at *F/V Integrity*, await arrival of captain and mate.
+-   03:15 Depart dock, transit to **J06** (experimental turbine site).
+-   05:33 Arrive at **J06** (formerly A-9-2).
+    -   05:35 Southern trawl anchor ("block") recovered.
+    -   05:44 Pot recovery complete. Transit to **N12**.
+-   06:35 Arrive **N12** (formerly A-5-4). Begin pot recovery approach.
+    -   06:36 Southern block recovered.
+    -   06:45 Northern block recovered; pot recovery complete. Transit to **L12**.
+-   06:59 Arrive **L12** (formerly A-7-6). Begin pot recovery approach.
+    -   07:00 Southern block recovered.
+    -   07:07 Northern block recovered; pot recovery complete. Transit to **J12**.
+-   07:22 Arrive **J12** (formerly A-9-8). Begin pot recovery approach.
+    -   07:23 Southern block recovered.
+    -   07:29 Northern block recovered; pot recovery complete. Transit to **C2208_2**.
+-   08:05 Arrive **C2208_2**. Begin pot recovery approach.
+    -   08:06 Southern block recovered.
+    -   08:17 Northern block recovered; pot recovery complete. Transit to **C2208_1**.
+-   08:50 Arrive **C2208_1**. Begin pot recovery approach.
+    -   08:51 Southern block recovered.
+    -   08:59 Northern block recovered; pot recovery complete. Return to West Ocean City, MD.
+-   11:10 Arrive in West Ocean City, MD.
 
 ### Description {#pot-recovery-description}
 
-Dock departure was pushed back an hour due as the vessel's mate did not show up. B. Harrington and D. Secor decided to depart without a mate after waiting for 1 hour. Wind speed was \<5 knots, coming from the southwest (as reported by Capt. Harrington). Waves were 2 feet. Cloud cover was 0-1 tenths of the sky.
+Wind speed was \<5 knots, coming from the southwest (as reported by Capt. Harrington). Waves were 1 foot. Cloud cover was 0-10% of the sky.
 
-Pots were recovered in the same manner as in the 2022-06-27 report.
+Pots were recovered in the same manner as in the 2022-07-18 report:
 
-M. O'Brien pulled pots onboard with the assistance of Capt. B. Harrington, reporting catch per species, per pot to D. Secor. Fish from the first 5 pots were placed in the "near" tote with fish from the subsequent 10 pots placed in the "far" tote; this was in error, as the first *six* and last *9* pots were supposed to be combined according to experimental protocol. Due to how the pot strings were recovered, the "near" pots were the northernmost pots, and the "far" pots the southernmost.
+M. O'Brien pulled pots onboard with the assistance of Capt. K. Harrington, reporting catch per species, per pot to D. Secor. Fish from the first 6 pots were placed in the "near" tote with fish from the subsequent 9 pots placed in the "far" tote. Due to how the pot strings were recovered, the "near" pots were the southernmost pots, and the "far" pots the northernmost; this was the reverse of the 2022-07-18 cruise.
 
-Dominant species were black sea bass (`r filter(cpue_tally, species == 'black sea bass')$n`) and Jonah Crab (`r filter(cpue_tally, species == 'jonah crab')$n`), with sand dollars, sea stars, and one seahorse also present. `r filter(cpue_tally, is.na(species))$n` of the `r n_pots` recovered pots were empty. There was no significant difference in black sea bass catch between control and turbine sites or near and far sections of the lines ($\chi$-squared, $p >$ 0.05).
+Dominant species were black sea bass (`r filter(cpue_tally, species == 'black sea bass')$n`) and Jonah Crab (`r filter(cpue_tally, species == 'jonah crab')$n`), with sand dollars and one each of sea stars, seahorses, and mud crabs also present. `r filter(cpue_tally, is.na(species))$n` of the `r n_pots` recovered pots were empty. There was no significant difference in black sea bass catch between near and far sections of the lines ($\chi$-squared, $p >$ 0.05). There was, however, a significant difference between control and turbine sites ($\chi$-squared, $p <$ 0.001); this was due to C2208_2 being placed upon the "cable pile", an artificial reef structure which will be removed from further consideration as a control site.
 
-Total length (mm) and weight (g) of all black sea bass were recorded, culling the first five from each "near" and "far" section and releasing the others. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measurements$tl_mm, na.rm = T)` - `r max(measurements$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measurements$tl_mm, na.rm = T))` mm (minimum legal size 280 mm). Weights ranged from `r min(measurements$wt_g, na.rm = T)` - `r max(measurements$wt_g, na.rm = T)` g, mean of `r floor(mean(measurements$wt_g, na.rm = T))` g. There were no significant differences in length or weight between control and turbine sites or near and far sections of the lines (ANOVA, $p >$ 0.05).
+```{r}
+#| echo: false
+#| eval: false
+
+# Near/far chisq
+chisq.test(cpue_subset$near_far, cpue_subset$catch, simulate.p.value = TRUE)
+# Control/turbine chisq
+chisq.test(grepl('^C', cpue_subset$station), cpue_subset$catch, simulate.p.value = TRUE)
+```
+
+Total length (mm) and weight (g) of all black sea bass were recorded, culling the first five from each "near" and "far" section and releasing the others. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measurements$tl_mm, na.rm = T)` - `r max(measurements$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measurements$tl_mm, na.rm = T))` mm (minimum legal size 280 mm). Weights ranged from `r min(measurements$wt_g, na.rm = T)` - `r max(measurements$wt_g, na.rm = T)` g, mean of `r floor(mean(measurements$wt_g, na.rm = T))` g. There were no significant differences in length or weight between control and turbine sites (ANOVA, $p >$ 0.05). There was no significant difference in weight between near and far sections of the lines (ANOVA, $p >$ 0.05), but near sites were significantly longer than far sites (ANOVA, $p =$ 0.02). This was driven entirely by the control site located on the cable pile, as can be seen in the [measurement summaries](#measurements)
+
+```{r}
+#| echo: false
+#| eval: false
+
+# Near/Far ANOVA
+summary(lm(tl_mm ~ near_far, data = measurements))
+summary(lm(wt_g ~ near_far, data = measurements))
+# Control/turbine ANOVA
+summary(lm(tl_mm ~ grepl('^C', station), data = measurements))
+summary(lm(wt_g ~ grepl('^C', station), data = measurements))
+```
 
 Catch and size data summaries are shown in the [sample summary section](#sample-summary) below.
 
@@ -255,9 +330,6 @@ leaflet() |>
 ```{r}
 #| message: false
 cpue |> 
-  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
-         month = month.name[data.table::month(recover_date)],
-         month = factor(month, levels = month.name, ordered = T)) |> 
   filter(species == 'black sea bass') |> 
   group_by(month, stratum, near_far) |> 
   summarise(N = sum(catch, na.rm = T),
@@ -265,24 +337,31 @@ cpue |>
             average = round(mean(catch, na.rm = T),1),
             max = max(catch, na.rm = T),
             sd = round(sd(catch, na.rm = T), 2)) |>
+  left_join(measures |>
+              group_by(month, stratum, near_far) |>
+              summarize(retained = sum(retained == 'Y'))) |> 
   gt(groupname_col = c('month', 'stratum'),
      rowname_col = c('near_far')) |> 
-  tab_options(row_group.as_column = TRUE) |> 
+  tab_options(row_group.as_column = TRUE) |>
+  tab_header(title = 'Black sea bass catch') |> 
+  summary_rows(groups = T,
+               fns = 'sum')
+  
+
   summary_rows(groups = T, fns = c(Total = 'sum'),
                columns = N, missing_text = '',
-               decimals = 0) |> 
-  as_raw_html()
+               decimals = 0)
   
 ```
 
-#### July 2022 catch
+#### `r month.name[as.numeric(substr('2022-08-01', 6, 7))]` 2022 catch
 
 The blank bars on the right show the count of pots with no catch.
 
 ```{r}
 #| label: catch-plot
 ggplotly(
-  ggplot(data = cpue_202207) +
+  ggplot(data = cpue_subset) +
     geom_bar(aes(x = species)) +
     scale_y_continuous(breaks = seq(0, 10, 2)) +
     facet_grid(station ~ near_far) +
@@ -290,7 +369,7 @@ ggplotly(
 )
 ```
 
-### Fish measurements
+### Fish measurements {#measurements}
 
 #### Total length (mm)
 
