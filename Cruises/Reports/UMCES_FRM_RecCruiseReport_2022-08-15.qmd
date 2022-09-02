@@ -1,0 +1,307 @@
+---
+title: "Cruise Report: 2022-08-15 : 08-16"
+subtitle: "Recreational angling survey"
+author: "Mike O'Brien (UMCES)"
+format:
+  html:
+    self-contained: true
+echo: false
+warning: false
+message: false
+editor: visual
+fontsize: 16px
+params:
+  st_date: '2022-08-15'
+  end_date: '2022-08-16'
+---
+
+```{r}
+#| label: packages
+
+library(sf); library(dplyr); library(leaflet); library(targets); library(xml2)
+library(readxl); library(ggplot2); library(plotly); library(gt)
+```
+
+```{r}
+#| label: parameters
+
+theme_set(
+  theme_minimal()
+)
+
+cruise_id <- gsub('20|-|\\d{2}$', '', params$st_date)
+
+```
+
+```{r}
+#| label: geo-base
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+
+towers <- st_read(tar_read(usw_locations),
+                  layer = 'WTG_Layout_2022_0111',
+                  quiet = T)
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+```
+
+```{r}
+#| label: waypoints
+pts <- read_sf(
+  file.path('embargo/gps',
+            cruise_id,
+            'repaired/rec',
+            paste0('waypoints_repaired_', 
+                   gsub('-', '', params$st_date),
+                   '.gpx')
+            ),
+  layer = 'waypoints') |> 
+  filter(!is.na(name)) |> 
+  mutate(grp = case_when(grepl('ctrl', name) ~ 'Control',
+                         grepl(' [JKLMN]', name) ~ 'Turbine'),
+         action = case_when(grepl('jig', name) ~ 'Jig',
+                            grepl('drop', name) ~ 'Drop',
+                            T ~ 'Target'))
+```
+
+```{r}
+#| label: tracks
+gpx_ext_fix <- function(x){
+  base <- x |> 
+    as.character() |> 
+    read_html() |>  
+    xml_contents() |> 
+    xml_children()
+  
+  conts <- base |> 
+    xml_text() |> 
+    as.list() |> 
+    data.frame() 
+  
+  names(conts) <- xml_name(base)
+  
+  conts
+}
+
+tracks <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/rec'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'tracks', quiet = T
+) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx'))) |> 
+  st_cast('LINESTRING') |> 
+  mutate(displaycolor = ifelse(grepl('-20 ', name),
+                                      gsub('Cyan', 'Magenta', displaycolor),
+                                      displaycolor))
+
+track_points <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/rec'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'track_points', quiet = T
+)
+```
+
+## Participants
+
+-   Dave Secor (UMCES)
+-   Mike O'Brien (UMCES)
+-   Todd Sumner (US Wind, Inc.)
+-   Capt. Dan Stauffer (*F/V Fin Chaser*, captain)
+-   Joey M. (*F/V Fin Chaser*, mate)
+
+## Overall
+
+-   04:45 Meet at *F/V Integrity*, load remaining gear and prepare for departure.
+-   04:55 Depart dock, transit to **unidentified wreck** (control site).
+-   06:43 Arrive at **unidentified wreck**.
+    -   06:46 Begin jig fishing
+    -   07:04 - 08:11 Drop fishing
+    -   08:11 Transit to **K07**
+-   08:45 Arrive at **K07**
+    -   08:48 Begin jig fishing
+    -   09:03 - 09:59 Drop fishing
+    -   09:59 Stop drop fishing after 13 drops due to weather. Return to Talbot St Pier, Ocean City, MD
+-   11:30 Arrive Ocean City, MD (time approximate)
+
+## Description
+
+```{r}
+#| label: description
+
+station_data <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                           sheet = 'station') |> 
+  filter(date >= params$st_date) |> 
+  mutate(datetime =
+           as.POSIXct(
+             paste(date, format(time_arrival, '%H:%M:%S'))
+           )
+  ) |> 
+  select(station, lon_dm, lat_dm, depth_m, wind_sp_kts, wind_dir_deg, wave_ht_m,
+         wave_swell_m, cloud_cover_tnth)
+```
+
+::: column-body-outset
+```{r}
+#| label: description-table
+station_data |>
+  gt(rowname_col = 'station') |> 
+  as_raw_html()
+```
+:::
+
+Wind speed was `r station_data$wind_sp_kts[1]` knots at the control site and `r station_data$wind_sp_kts[1]` knots at the experimental site, coming from `r unique(station_data$wind_dir_deg)` degrees. Waves were `r unique(station_data$wave_ht_m)` m with a swell of `r unique(station_data$wave_swell_m)` m. Cloud cover was `r min(station_data$cloud_cover_tnth)` to `r max(station_data$cloud_cover_tnth)` tenths of the sky.
+
+## Fish summary
+
+Fish showed some outward signs of barotrauma, mostly the intestines protruding from the anus. All but one black sea bass was jaw-hooked (the least-damaging hook position). Fewer black sea bass ans substantially more searobins were caught as compared to the June cruise. As in the June cruise, all black sea bass were caught at the control wreck, and all searobins were caught at a future turbine site.
+
+```{r}
+#| label: fish-data
+
+fish <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                   sheet = 'fish') |> 
+  filter(!is.na(date)) |> 
+  mutate(month = month.name[data.table::month(date)],
+    month = factor(month, levels = month.name, ordered = T)
+  )
+fish_subset <- fish |> 
+  filter(date >= params$st_date) |> 
+  mutate(size_limit = ifelse(species == 'bsb', 320, NA))
+```
+
+```{r}
+#| label: catch-summary
+fish |> 
+  group_by(month, station, species) |> 
+  tally() |> 
+  gt(groupname_col = c('month', 'station')) |>
+  # tab_options(row_group.as_column = TRUE) |>
+  tab_header(title = 'Species catch') |>
+  as_raw_html()
+```
+
+Black sea bass catch is summarized below. Summaries are only provided for the wreck (control) sites, as no black sea bass were caught at turbine (experimental) sites.
+
+```{r}
+#| label: bsb-wreck-summary
+
+drop <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                   sheet = 'drop') |> 
+  filter(species == 'bsb' | is.na(species),
+         grepl('wrecks|wash', station),
+         drop_id != 'jig') |> 
+  mutate(
+    n_fish = as.numeric(n_fish),
+    drop_id = as.numeric(drop_id),
+    # type = ifelse(drop_id == 'jig', 'jig', 'drop'),
+    month = month.name[data.table::month(date)],
+    month = factor(month, levels = month.name, ordered = T)
+  )
+
+drop |> 
+  group_by(month, angler_id) |> 
+  summarize(BSB = sum(species == 'bsb', na.rm = T),
+            Drops = length(!is.na(n_fish)),
+            mean = round(mean(n_fish, na.rm = T), 2),
+            SD = round(sd(n_fish, na.rm = T), 2),
+            ) |> 
+  gt() |>   
+  tab_spanner(label = 'BSB/drop',
+              columns = c(mean, SD)) |> 
+  summary_rows(groups = T,
+               columns = c(BSB, mean, SD),
+               fns = list(
+                 mean = 'mean',
+                 sd = 'sd'
+               )) |> 
+  grand_summary_rows(
+    columns = c(BSB, mean, SD),
+    fns = list(
+                 `Grand mean` = 'mean',
+                 `Grand SD` = 'sd'
+               )
+  ) |> 
+  cols_label(angler_id = 'Angler') |> 
+  # tab_options(row_group.as_column = TRUE) |> 
+  tab_header(title = 'Black sea bass catch',
+             subtitle = 'Wreck sites only') |> 
+  as_raw_html()
+
+```
+
+Most black sea bass caught were under-sized; the red line shows fish of legal length (\>320 mm).
+
+```{r}
+#| label: fish-length
+
+ggplot(data = filter(fish_subset, !is.na(tl_mm))) +
+  geom_histogram(aes(x = tl_mm), binwidth = 5) +
+  geom_vline(aes(xintercept = size_limit), color  ='red') +
+  facet_wrap(~species, ncol = 2) +
+  labs(x = 'Total length (mm)', y = 'N')
+```
+
+```{r}
+#| label: fish-weight
+
+ggplot(data = filter(fish, !is.na(weight_g))) +
+  geom_histogram(aes(x = weight_g), binwidth = 50) +
+  facet_wrap(~species, ncol = 2) +
+  labs(x = 'Weight (g)', y = 'N')
+```
+
+The effect of angler experience -- namely *JM*, the *Fin Chaser* mate, was much less pronounced in August as compared to June. This may also reflect underlying differences in abundance or catchability at the two reef sites.
+
+```{r}
+#| label: angler
+ggplot(data = filter(drop, species == 'bsb')) +
+  geom_bar(aes(x = angler_id)) +
+  labs(x = 'Angler', y = 'N') +
+  facet_wrap(~ month, scales = 'free_x')
+```
+
+## Cruise map
+
+```{r}
+#| label: cruise-map
+leaflet() |> 
+  setView(lng = -74.73, lat = 38.39, zoom = 11) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |>
+  addCircleMarkers(data = pts, label = ~ name,
+                   clusterId = ~ grp,
+                   color = ~ colorFactor(c('yellow', 'blue', 'green'), pts$action)(action),
+                   clusterOptions = markerClusterOptions(
+                     disableClusteringAtZoom = 15,
+                     zoomToBoundsOnClick = T),
+                   group = 'Waypoints') |> 
+  addPolylines(data = tracks[c(1, 17),],
+               color = ~ 'Magenta',
+               group = 'Jig tracks') |>
+  addPolylines(data = tracks[c(2:16, 18:30),],
+               color = 'Cyan',
+               group = 'Drop tracks') |>
+  addPolygons(data = zones, color = c('green', 'yellow', 'red'),
+              group = 'Development Zone') |>
+  addCircles(data = towers,
+             color = 'red', radius = 20, group = 'Turbines') |> 
+  addLayersControl(overlayGroups = c('Waypoints', 'Jig tracks', 'Drop tracks',
+                                     'Turbines', 'Development Zone'),
+                   options = layersControlOptions(collapsed = FALSE)) |>
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```

@@ -1,0 +1,237 @@
+---
+title: 'Recreational Survey -- Shakedown August 2022'
+subtitle: "August 15 - 16, 2022   [*F/V Fin Chaser*](https://finchasersportfishing.com/)   Ocean City, MD"
+format: pdf
+editor: visual
+echo: false
+message: false
+warning: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/frm-survey')
+```
+
+```{r}
+#| label: params
+
+library(sf); library(ggplot2); library(concaveman); library(TSP); library(units)
+library(data.table); library(targets)
+
+n_exp <- 1
+chosen_ctrl <- 'Great Eastern Reef'
+vessel_speed_kts <- 12
+
+seed <- 20220815
+```
+
+```{r}
+#| label: towers
+
+towers <- usw_locations |> 
+  tar_read() |> 
+  st_read(layer = 'WTG_Layout_2022_0111', quiet = TRUE)
+
+tower_boundary <- concaveman::concaveman(towers)
+
+setDT(towers)[c(st_contains(tower_boundary,
+                           st_buffer(geom, units::as_units(10, 'meters')),
+                           sparse = F)), location := 'inner']
+towers[is.na(location), location := 'outer']
+```
+
+```{r}
+#| label: stations
+set.seed(seed)
+
+# Randomization procedure not conducted due to weather. Selecting closer site:
+#   K07
+
+# exp_sites <- towers |> 
+#   DT(grepl('^[JKLMNOPQR]', ID) & location == 'inner') |>
+#   DT(sample(.N, n_exp)) |> 
+#   DT(, .(station = ID, geometry = geom)) |> 
+#   st_as_sf()
+
+exp_sites <- towers |> 
+  DT(ID == 'K07', .(station = ID, geometry = geom)) |> 
+  st_as_sf()
+
+
+ctrl_sites <- data.frame(
+  station = c('Twin Wrecks', 'Great Eastern Reef'),
+  lat = c(38.23071, 38.43049),
+  long = c(-74.75808, -74.76770)
+) |> 
+  st_as_sf(coords = c('long', 'lat'),
+           crs = 4326) |> 
+  DT(station == chosen_ctrl)
+
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        station = 'ocmd')
+
+stations <- rbind(ocmd, ctrl_sites, exp_sites)
+```
+
+```{r}
+#| label: tsp
+
+tsp <- TSP(as.dist(st_distance(stations)))
+
+tour <- solve_TSP(tsp, method = 'farthest_insertion')
+
+path <- c(cut_tour(tour, 1, exclude_cut = FALSE), 1)
+```
+
+```{r}
+#| label: calc-dist-matrices
+
+tf <- function(dist_mat, speed){
+  mat <- dist_mat |> 
+    as.numeric() |> 
+    matrix(ncol = sqrt(length(dist_mat)))
+  
+  mat <- (mat / speed) * 3600
+  
+  mat <- ceiling(mat / (5 * 60)) * (5 * 60)
+  
+  mat <- as.POSIXct(mat,
+                    tz = 'UTC',
+                    origin = '1970-01-01')
+  
+  mat <- format(mat, '%H h %M m')
+  
+  mat <- matrix(mat, ncol = sqrt(length(mat)))
+  
+  mat
+}
+
+nm_matrix <- round(set_units(st_distance(st_as_sf(stations)), 'nautical_mile'), 2)
+time_matrix <- tf(nm_matrix, vessel_speed_kts)
+```
+
+## Participants
+
+::: columns
+::: {.column width="50%"}
+### August 15
+
+-   [Dave Secor](mailto:%20secor@umces.edu): 301-481-5053
+-   [Mike O'Brien](mailto:%20obrien@umces.edu): 267-970-1973
+:::
+
+::: {.column width="50%"}
+### August 16
+
+-   [Dave Secor](mailto:%20secor@umces.edu)
+-   [Mike O'Brien](mailto:%20obrien@umces.edu)
+-   [Todd Sumner](mailto:%20t.sumner@uswindinc.com): 443-240-2824
+-   [Capt. Dan Stauffer](mailto:%20finchasersportfishing@gmail.com)
+-   *Fin Chaser* mate
+:::
+:::
+
+## Schedule
+
+### 15 August
+
+-   Scientific crew (DHS, MOB)
+    -   pack CBL truck (2013 Silverado) at Solomons, MD. Drive to West Ocean City, MD
+    -   purchase dry ice at Safeway in Chester, MD
+        -   1925 Main St, Chester, MD 21619
+    -   Check into [Beach Bum West-O](https://beachbumwesto.com/)
+        -   12308 Old Bridge Road, Ocean City, Maryland 21842
+        -   Conf. #: LAMACMD03207533
+
+### 16 August
+
+-   Scientific crew (DHS, MOB)
+    -   Check out of Beach Bum West-O
+-   Full crew (DHS, MOB, TS, DS, mate)
+    -   0630 - 1500: Recreational fishing survey aboard F/V Fin Chaser
+        -   312 Talbot St, Ocean City, MD 21842
+-   Scientific crew returns to Solomons, MD. Unpack and return truck.
+
+\newpage
+
+## Cruise plan
+
+Times calculated at 12 knots.
+
+::: columns
+::: {.column width="50%"}
+-   0500: MOB, DHS, TS meet at Talbot St Pier, load gear onto *F/V Fin Chaser*
+-   0530: *Fin Chaser* depart Talbot St Pier, transit to **Great Eastern Reef** control site
+    -   <font size= "5"> **38 25.829, 74 46.062** </font>
+-   0655: Arrive Great Eastern Reef control site.
+    -   Mate arranges gear for jigging.
+    -   Sci crew organizes MS-222 bucket
+    -   Environmental data recorded
+-   0705: Mate begins jigging for 15 minutes.
+    -   All fish are weighed and measured.
+    -   First 10 black sea bass are sacrificed.
+-   0720 Mate ends jigging.
+:::
+
+::: {.column width="50%"}
+-   0725: Survey crew begins drop survey.
+    -   15 x 3 minute drops.
+    -   All fish are weighed and measured.
+    -   First 10 black sea bass are sacrificed.
+-   0900: Drop survey ends. Transit to **K07** experimental site.
+    -   <font size= "5"> **38 21.201, 74 42.15** </font>
+-   0930: Arrive K07 experimental site.
+-   0940: Mate begins jigging for 15 minutes. Data and specimen collection as above.
+-   0955: Mate ends jigging.
+-   1000: Survey crew begins drop survey, conducted as above.
+-   1130: Drop survey ends. Return to Talbot St Pier.
+-   1305: Arrive Talbot St Pier. Unload gear.
+:::
+:::
+
+```{r}
+#| echo: false
+
+library(ggplot2); library(sf); library(geoarrow)
+
+bathy <- read_sf('data/geo/bathymetry_midatl.gpkg') |> 
+  st_transform(4326)
+
+midatl <- read_geoparquet_sf('data/geo/matl_states.parquet')
+
+ggplot() +
+  geom_sf(data = bathy[bathy$elev_m < 100,]) +
+  geom_sf(data = midatl) +
+  geom_sf(data = stations, size = 6, fill = 'red') +
+  geom_sf_label(data = stations, aes(label = station), nudge_x = 0.03, nudge_y = 0.01) +
+  geom_sf(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[c(path),])),
+      'LINESTRING'
+      ), crs = 4326
+    )) +
+  labs(x = NULL, y = NULL) +
+  coord_sf(xlim  = c(-75.2, -74.55),
+           ylim = c(38.1, 38.5), expand = F) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(angle = 45))
+
+```
+
+```{r}
+#| label: dist-matrix
+nm_matrix |>
+  as.numeric() |>
+  matrix(ncol = 3, dimnames = list(stations$station, stations$station)) |> 
+  knitr::kable('html', align = 'c', caption = 'Distance, nautical miles')
+
+time_matrix |>
+  matrix(ncol = 3, dimnames = list(stations$station, stations$station)) |> 
+  knitr::kable('html', align = 'c', caption = 'Distance, time')
+```
