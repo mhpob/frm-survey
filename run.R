@@ -7,4 +7,3 @@
 # targets::tar_make_clustermq(workers = 2) # nolint
 # targets::tar_make_future(workers = 2) # nolint
 targets::tar_make_future(workers = future::availableCores(logical = F))
-

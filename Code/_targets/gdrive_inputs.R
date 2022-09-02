@@ -13,17 +13,22 @@ find_gdrive_cue <- function(survey){
     tz = 'UTC', format = '%Y-%m-%dT%H:%M:%OSZ'
   )
   
-  tar_update <- tar_meta()[tar_meta()$name == paste('gdrive_cue', survey, sep = '_'),]$time
+  survey_dir <- ifelse(survey == 'rec', 'recreational', survey)
+  targets_update <- file.mtime(
+    paste0('embargo/', survey_dir, '_data/', survey,' survey recorded data.xlsx')
+  )
+
+  # targets_update <- tar_meta()[tar_meta()$name == paste('gdrive_cue', survey, sep = '_'),]$time
   
   # if not a branch:
-  # tar_update <- tar_meta()[tar_meta()$name == 'gdrive_cue',]$time
+  # targets_update <- tar_meta()[tar_meta()$name == 'gdrive_cue',]$time
   
-  if(length(tar_update) == 0){
-    tar_update <- 1
+  if(length(targets_update) == 0){
+    targets_update <- 1
   }else{
-    attr(tar_update, 'tzone') <- 'UTC'
+    attr(targets_update, 'tzone') <- 'UTC'
   }
-  gd_update < tar_update
+  gd_update < targets_update
 }
 
 
