@@ -1,6 +1,10 @@
 project:
    title: "frm-survey"
+   type: website
+   output-dir: docs
    execute-dir: project
+   render:
+    - cruises/plans/frm-pot_cruiseplan_20220829.qmd
 
 author: "Mike O'Brien (UMCES)"
 format:
@@ -8,3 +12,16 @@ format:
       self-contained: true
 fontsize: 16px
 editor: visual
+
+website:
+  title: "mysite"
+  navbar:
+    background: primary
+    left:
+      - href: cruises/plans/frm-pot_cruiseplan_20220829.qmd
+        text: Home
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true

@@ -20,3 +20,11 @@
 
 # Embargoed data
 embargo/
+
+
+# Compiled reports
+cruises/reports/compiled/
+cruises/plans/compiled/
+
+/.quarto/
+/_site/
