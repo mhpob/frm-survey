@@ -4,6 +4,9 @@ subtitle: "Recreational angling survey"
 author: "Mike O'Brien (UMCES)"
 format:
   html:
+    theme: cosmo
+    css: styles.css
+    toc: true
     self-contained: true
 echo: false
 warning: false
