@@ -248,7 +248,7 @@ After deployment of the last site, K07, there was one remaining pot. Mate Reilly
 
 ### Description {#pot-recovery-description}
 
-Wind speed was 10-20 knots, coming from theNNW (as reported by Capt. Harrington). Waves were 2-3 feet. Cloud cover was 20% of the sky.
+Wind speed was 10-20 knots, coming from the NNW (as reported by Capt. Harrington). Waves were 2-3 feet. Cloud cover was 20% of the sky.
 
 Pots were recovered in the same manner as in previous cruises:
 
@@ -272,7 +272,9 @@ chisq.test(grepl('^C', cpue_subset[cpue_subset$species == 'black sea bass',]$sta
            simulate.p.value = TRUE)
 ```
 
-Total length (mm) and weight (g) of all black sea bass were recorded, culling the first five from each "near" and "far" section and releasing the others. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measures_subset$tl_mm, na.rm = T)` - `r max(measures_subset$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measures_subset$tl_mm, na.rm = T))` mm (minimum legal size 280 mm). Weights ranged from `r min(measures_subset$wt_g, na.rm = T)` - `r max(measures_subset$wt_g, na.rm = T)` g, mean of `r floor(mean(measures_subset$wt_g, na.rm = T))` g. There were no significant differences in length or weight between control and turbine sites (ANOVA, $p >$ 0.05). There was no significant difference in weight between near and far sections of the lines (ANOVA, $p >$ 0.05), but near sites were significantly longer than far sites (ANOVA, $p =$ 0.02). This was driven entirely by the control site located on the cable pile, as can be seen in the [measurement summaries](#measurements)
+Total length (mm) and weight (g) of all black sea bass were recorded, culling the first five from each "near" and "far" section and releasing the others. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measures_subset$tl_mm, na.rm = T)` - `r max(measures_subset$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measures_subset$tl_mm, na.rm = T))` mm (minimum legal size 320 mm). Weights ranged from `r min(measures_subset$wt_g, na.rm = T)` - `r max(measures_subset$wt_g, na.rm = T)` g, mean of `r floor(mean(measures_subset$wt_g, na.rm = T))` g.
+
+There were no significant differences in length or weight between near and far or control and turbine sites (ANOVA, $p >$ 0.05).
 
 ```{r}
 #| echo: false
@@ -410,6 +412,7 @@ ggplotly(
 ```
 
 #### Sex
+
 ```{r}
 #| warning: false
 #| label: sex-plot
