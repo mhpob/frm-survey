@@ -1,7 +1,7 @@
 ---
 title: 'Pot Survey -- Shakedown September 2022'
 subtitle: "August 29 - Sept 1, 2022   *F/V Integrity*   West Ocean City, MD"
-format: pdf
+format: html
 editor: visual
 echo: false
 message: false
@@ -219,12 +219,14 @@ for(i in 2:(length(path)-1)){
 ::: columns
 ::: {.column width="50%"}
 ### August 29
+
 -   [Dave Secor](mailto:%20secor@umces.edu): 301-481-5053
 -   [Mike O'Brien](mailto:%20obrien@umces.edu): 267-970-1973
 :::
 
 ::: {.column width="50%"}
 ### August 30 - Sept 1
+
 -   [Dave Secor](mailto:%20secor@umces.edu)
 -   [Mike O'Brien](mailto:%20obrien@umces.edu)
 -   Capt. Kerry Harrington
@@ -305,8 +307,8 @@ Full crew (DHS, MOB, KH, mate)
 
 `r format(rec_seq$endtime[7] + 2*3600, '%H:%M')` Scientific crew drive back to Solomons, MD
 
-
 ## Distances
+
 ```{r}
 #| label: dist-matrix
 nm_matrix |>
@@ -320,7 +322,6 @@ time_matrix_pretty |>
          dimnames = list(stations$station, stations$station)) |> 
   knitr::kable('html', align = 'c', caption = 'Distance, time')
 ```
-
 
 ```{r}
 #| echo: false
@@ -350,5 +351,3 @@ ggplot() +
   theme(axis.text.y = element_text(angle = 45))
 
 ```
-
-

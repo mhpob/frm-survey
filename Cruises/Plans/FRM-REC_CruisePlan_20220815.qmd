@@ -1,7 +1,7 @@
 ---
 title: 'Recreational Survey -- Shakedown August 2022'
 subtitle: "August 15 - 16, 2022   [*F/V Fin Chaser*](https://finchasersportfishing.com/)   Ocean City, MD"
-format: pdf
+format: html
 editor: visual
 echo: false
 message: false
