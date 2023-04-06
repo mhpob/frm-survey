@@ -33,7 +33,7 @@ jobs:
           any::qs
         
     - name: Scrape with R script
-      run: Rscript "code/fishweather_scrape.R"
+      run: Rscript "Code/fishweather_scrape.R"
       
  # Add new files in data folder, commit along with other modified files, push
     - name: Commit files
