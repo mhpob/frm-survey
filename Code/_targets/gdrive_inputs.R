@@ -1,53 +1,87 @@
-find_gdrive_cue <- function(survey){
+find_gdrive_cue <- function(data_source){
   
-  id <- switch(survey,
+  id <- switch(data_source,
                rec = '1OsvJwdYRc8Wf9Z-nkF4t3SCQQ89CEWe9a1CCtPRMp7w',
-               pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM')
+               pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM',
+               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx')
   
   drive_auth(email = 'obrien@umces.edu')
   
-  gd_update <- as.POSIXct(
-    drive_get(
-      as_id(id)
-    )$drive_resource[[1]]$modifiedTime,
-    tz = 'UTC', format = '%Y-%m-%dT%H:%M:%OSZ'
-  )
-  
-  survey_dir <- ifelse(survey == 'rec', 'recreational', survey)
-  targets_update <- file.mtime(
-    paste0('embargo/', survey_dir, '_data/', survey,' survey recorded data.xlsx')
-  )
-
-  # targets_update <- tar_meta()[tar_meta()$name == paste('gdrive_cue', survey, sep = '_'),]$time
-  
-  # if not a branch:
-  # targets_update <- tar_meta()[tar_meta()$name == 'gdrive_cue',]$time
-  
-  if(length(targets_update) == 0){
-    targets_update <- 1
-  }else{
-    attr(targets_update, 'tzone') <- 'UTC'
+  if(data_source %in% c('rec', 'pot')){
+    gd_update <- as.POSIXct(
+      drive_get(
+        as_id(id)
+      )$drive_resource[[1]]$modifiedTime,
+      tz = 'UTC', format = '%Y-%m-%dT%H:%M:%OSZ'
+    )
+    
+    survey_dir <- ifelse(data_source == 'rec', 'recreational', data_source)
+    targets_update <- file.mtime(
+      paste0('embargo/', survey_dir, '_data/',
+             data_source,' survey recorded data.xlsx')
+    )
+    
+    # targets_update <- tar_meta()[tar_meta()$name == paste('gdrive_cue', data_source, sep = '_'),]$time
+    
+    # if not a branch:
+    # targets_update <- tar_meta()[tar_meta()$name == 'gdrive_cue',]$time
+    
+    
+    if(length(targets_update) == 0){
+      targets_update <- 1
+    }else{
+      attr(targets_update, 'tzone') <- 'UTC'
+    }
+    cue <- gd_update < targets_update
   }
-  gd_update < targets_update
+  
+  if(data_source == 'hobo'){
+    gdrive_hobo <- drive_ls(as_id(id))
+    local_hobo <- list.files('data/hobo')
+    
+    cue <- all(gdrive_hobo$name %in% local_hobo)
+  }
+
+  cue
 }
 
 
 
-gdrive_download <- function(survey){
+gdrive_download <- function(data_source){
   
-  id <- switch(survey,
+  id <- switch(data_source,
                rec = '1OsvJwdYRc8Wf9Z-nkF4t3SCQQ89CEWe9a1CCtPRMp7w',
-               pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM')
+               pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM',
+               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx')
   
   drive_auth(email = 'obrien@umces.edu')
   
-  survey_dir <- ifelse(survey == 'rec', 'recreational', survey)
+  if(data_source %in% c('rec', 'pot')){
+    survey_dir <- ifelse(survey == 'rec', 'recreational', survey)
+    
+    dest_path <- paste0('embargo/', survey_dir, '_data/', survey,' survey recorded data.xlsx')
+    
+    drive_download(
+      as_id(id),
+      dest_path,
+      overwrite = TRUE
+    )
+    
+    dest_path
+  }
   
-  dest_path <- paste0('embargo/', survey_dir, '_data/', survey,' survey recorded data.xlsx')
-  
-  drive_download(as_id(id),
-                 dest_path,
-                 overwrite = TRUE)
-  
-  dest_path
+  if(data_source == 'hobo'){
+    gdrive_hobo <- drive_ls(as_id(id))
+    local_hobo <- list.files('data/hobo')
+    
+    to_download <- gdrive_hobo[!gdrive_hobo$name %in% local_hobo,]
+    
+    for(i in 1:nrow(to_download)){
+      drive_download(as_id(to_download$id[i]),
+                     paste0('data/hobo/',
+                            to_download$name[i]))
+    }
+  }
+
+  list.files('data/hobo', full.names = T)
 }

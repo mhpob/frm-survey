@@ -24,32 +24,30 @@ rm(file)
 # Replace the target list below with your own:
 list(
   
-  # read in pot and rec survey data from Google Drive
+  # read in rec survey, pot survey, or HOBO data from Google Drive
+  # https://github.com/ropensci/tarchetypes/discussions/28
   tar_map(
-    list(surveys = c('rec', 'pot')),
+    list(data_source = c('rec', 'pot', 'hobo')),
     
     # Cues will always appear outdated so that they check every time
-    tar_target(gdrive_cue, find_gdrive_cue(surveys),
+    # We want the cue to be T if we want to skip it, F if we want to run it
+    tar_target(gdrive_cue, find_gdrive_cue(data_source),
                format = 'qs',
                cue = tar_cue('always')),
     
-    # After checking, the download will be cancelled if the target
-    #   metadata is older than the last time the sheet was edited.
+    # After checking, pot/rec downloads will be cancelled if the target
+    #   metadata is older than the last time the sheet was edited. HOBO
+    #   downloads will be cancelled if the file names in data/hobo/ match those
+    #   in the USW/FRM/pot/raw data/HOBO shared drive folder
     tar_skip(raw_data,
-             gdrive_download(surveys),
+             gdrive_download(data_source),
              skip = gdrive_cue,
              format = 'file',
              cue = tar_cue(mode = "always")
     )
   ),
-  # https://github.com/ropensci/tarchetypes/discussions/28
-  # tar_target(gdrive_cue, find_gdrive_cue('rec'),
-  #            format = 'qs'),
-  # tar_skip(rec_survey,
-  #          gdrive_download('rec'),
-  #          skip = gdrive_cue,
-  #          format = 'file'
-  # ),
+
+
   
   # Geospatial inputs
   tar_file(
