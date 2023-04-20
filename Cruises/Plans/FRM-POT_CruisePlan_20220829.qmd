@@ -186,6 +186,29 @@ for(i in 2:(length(path)-1)){
 }
 ```
 
+```{r}
+library(leaflet)
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 10) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |> 
+  addPolygons(data = zones, color = 'pink') |>
+  addPolygons(data = ctrl_area, color = 'gray')|>
+  addCircleMarkers(data = stations, label = ~ station) |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[c(path),])),
+      'LINESTRING'
+    ), crs = 4326
+  )) |>
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```
+
 ## Packing list
 
 ::: columns
