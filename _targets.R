@@ -6,7 +6,7 @@ library(future)
 # Set target options:
 tar_option_set(
   # packages that your targets need to run
-  packages = c('sf', 'dplyr', 'googledrive'), 
+  packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr'), 
   # default storage format
   format = "feather" 
   # Set other options as needed.
@@ -46,7 +46,13 @@ list(
              cue = tar_cue(mode = "always")
     )
   ),
-
+  
+  tar_target(hobo,
+             hobo_clean(
+               tar_read(raw_data_hobo),
+               tar_read(raw_data_pot)
+             ),
+  ),
 
   
   # Geospatial inputs
