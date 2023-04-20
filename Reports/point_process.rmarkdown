@@ -1,0 +1,122 @@
+---
+title: "Point Process"
+editor: visual
+fontsize: 16px
+
+warning: false
+message: false
+---
+
+```{r}
+#| label: packages
+
+library(targets); library(readxl); library(dplyr); library(future)
+library(mgcv); library(brms)
+```
+
+```{r}
+cpue <- tar_read('raw_data_pot') |> 
+  
+  #read in data
+  read_excel(sheet = 'CPUE') |> 
+  
+  # clean names
+  rename_with(function(.) tolower(gsub('[ /_]', '', .))) |> 
+  
+  # pull out black sea bass catch
+  filter(species == 'black sea bass') |> 
+  
+  # create new columns for modeling
+  mutate(station = as.factor(station),
+         catch = as.numeric(catch),
+         month = factor(month.abb[lubridate::month(recoverdate)]),
+         montho = factor(month, levels = month.abb[6:8], ordered=T),
+         type = ifelse(grepl('^C', station), 'control', 'turbine'))
+```
+
+
+## mgcv
+
+Catch is a function of month (`month`), the type of station (control or turbine; `type`), a nonlinear effect of pot position (`potnumber`) that varies according to month (analogous to an interaction term), and a random effect of the individual station (`station`). For now, we'll consider months as an unordered factor -- probably needs changing for "correctness" later.
+
+
+```{r}
+m1 <- gam(catch ~ 0 + month + type + s(potnumber, by = month) + 
+             s(station, bs = 're'),
+          family = poisson(),
+          data = cpue,
+          method = 'REML')
+
+m1_summ <- summary(m1)
+m1_summ
+```
+
+
+Breaking down the summary:
+
+-   Month
+    -   Parametric coefficients
+        -   All confidence intervals overlap, and June is no different than zero. this suggests that month doesn't have much influence on the intercept
+
+        -   August: `r round(m1_summ$p.coef[1], 3)` \[`r round(m1_summ$p.coef[1] - 1.96 * m1_summ$se[1], 3)`, `r round(m1_summ$p.coef[1] + 1.96 * m1_summ$se[1], 3)`\]
+
+        -   July: `r round(m1_summ$p.coef[2], 3)` \[`r round(m1_summ$p.coef[2] - 1.96 * m1_summ$se[2], 3)`, `r round(m1_summ$p.coef[2] + 1.96 * m1_summ$se[2], 3)`\]
+
+        -   June: `r round(m1_summ$p.coef[3], 3)` \[`r round(m1_summ$p.coef[3] - 1.96 * m1_summ$se[3], 3)`, `r round(m1_summ$p.coef[3] + 1.96 * m1_summ$se[3], 3)`\]
+    -   Smooth terms
+        -   There is some evidence that the month of August had some variability along the transect, but no such evidence for June and July (`edf` is no different than 1, which equates to a line).
+-   Station type
+    -   Parametric coefficients
+
+        -   "Control" is the reference level here, so `typeturbine` refers to the difference between control and turbine sites.
+
+        -   The coefficient is less than zero, suggesting that catch rates are lower at turbine sites: `r round(m1_summ$p.coef[4], 3)` \[`r round(m1_summ$p.coef[4] - 1.96 * m1_summ$se[4], 3)`, `r round(m1_summ$p.coef[4] + 1.96 * m1_summ$se[4], 3)`\]
+
+Note that the July and June smooths are no different than a line and their SEs encompass zero. The random effect term captures the station effect well (the points fall along the line), aside from one station (likely the control site at the cable pile in August 2022).
+
+
+```{r}
+plot(m1, pages = 1)
+```
+
+
+So, there is a difference between control and turbine sites -- but does it explain enough to keep it in the model? A likelihood ratio test says...
+
+
+```{r}
+m2 <- gam(catch ~ 0 + month + s(potnumber, by = month) + s(station, bs = 're'),
+          family = poisson(),
+          data = cpue,
+          method = 'REML')
+
+anova(m1, m2, test = 'LRT')
+```
+
+
+No.
+
+## brms
+
+I'm going to do the same thing with a Bayesian approach to see how the random effects interact.
+
+
+```{targets fit, tar_simple = TRUE, tar_interactive = TRUE}
+#| echo: false
+# Run chains in parallel
+plan(multisession,
+     workers = availableCores(logical = F))
+
+brm(catch ~ type + month + s(potnumber, by = month) + (1|station),
+              family = poisson(),
+              data = cpue,
+              future = TRUE,
+              iter = 5000,
+              warmup = 2500,
+              thin = 10,
+              control = list(adapt_delta = 0.99))
+```
+
+```{r}
+summary(fit)
+```
+

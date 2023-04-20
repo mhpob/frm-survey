@@ -1,0 +1,209 @@
+---
+title: "Progress report figures"
+editor: visual
+---
+
+```{r}
+#| label: packages
+
+library(sf); library(dplyr); library(geoarrow)
+library(readxl); library(ggplot2); library(gt); library(tidyr)
+```
+
+```{r}
+fish <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx',
+                   sheet = 'fish') |> 
+  filter(!is.na(date)) |> 
+  mutate(month = month.name[data.table::month(date)],
+    month = factor(month, levels = month.name, ordered = T)
+  )
+```
+
+```{r}
+
+ggplot(data = filter(fish, species == 'bsb')) +
+  geom_vline(aes(xintercept = 320), col = 'red') +
+  geom_histogram(aes(x = tl_mm), binwidth = 10) +
+  facet_wrap(~ month, ncol = 1) +
+  theme_minimal() +
+  labs(x = 'Total length (mm)',
+       y = 'Count per length bin') +
+  theme(axis.text = element_text(size = 10),
+        strip.text = element_text(size = 10))
+
+ggplot(data = filter(fish, species == 'bsb')) +
+  geom_histogram(aes(x = weight_g), binwidth = 20) +
+  facet_wrap(~ month, ncol = 1) +
+  theme_minimal() +
+  labs(x = 'Weight (g)',
+       y = 'Count per weight bin') +
+  theme(axis.text = element_text(size = 10),
+        strip.text = element_text(size = 10))
+```
+
+```{r}
+measures <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                            sheet = 'Measurements',
+                           na = c('', 'NA')) |> 
+  rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         month = month.name[data.table::month(date)],
+         month = factor(month, levels = month.name, ordered = T))
+```
+
+```{r}
+ggplot(data = filter(measures, species == 'black sea bass')) +
+  geom_vline(aes(xintercept = 320), col = 'red') +
+  geom_histogram(aes(x = tl_mm, fill = stratum), binwidth = 10) +
+  facet_wrap(~ month, ncol = 1) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  labs(x = 'Total length (mm)',
+       y = 'Total count per length bin') +
+  theme(axis.text = element_text(size = 10),
+        strip.text = element_text(size = 10))
+
+ggplot(data = filter(measures, species == 'black sea bass')) +
+  geom_histogram(aes(x = wt_g, fill = stratum), binwidth = 20) +
+  facet_wrap(~ month, ncol = 1) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  labs(x = 'Weight (g)',
+       y = 'Total count per weight bin') +
+  theme(axis.text = element_text(size = 10),
+        strip.text = element_text(size = 10))
+```
+
+```{r}
+cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                   sheet = 'CPUE')
+
+cpue |> 
+  filter(Species != 'NA') |> 
+  mutate(
+    month = month.name[data.table::month(`Recover date`)],
+    month = factor(month, levels = month.name, ordered = T)
+  ) |> 
+  group_by(month, Species) |> 
+  tally() |> 
+  gt(groupname_col = 'month') |> 
+  tab_options(row_group.as_column = TRUE)
+
+```
+
+```{r}
+midatl <- read_geoparquet_sf('data/geo/matl_states.parquet')
+
+buildout <- read_sf('data/geo/usw_buildout_zones.gpkg')
+control <- buidlout <- read_sf('data/geo/frm_control.gpkg')
+
+turbines <- read_sf('embargo/uswind_pde-locations_2022-0111.gpkg',
+                    layer  = 'WTG_Layout_2022_0111')
+
+pot_stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx') |> 
+  filter(type == 'deploy') |> 
+  st_as_sf(coords = c('lon_start', 'lat_start'),
+           crs = 4326)
+  
+rec_stations <- read_excel('embargo/recreational_data/rec survey recorded data.xlsx') |> 
+  distinct(date, station, .keep_all = T) |> 
+  st_as_sf(coords = c('start_lon_dd', 'start_lat_dd'),
+           crs = 4326)
+```
+
+```{r}
+library(ggspatial)
+
+base <-
+  ggplot() +
+  geom_sf(data = midatl) +
+  geom_sf(data = turbines, size = 0) +
+  geom_sf(data = buildout, aes(fill = zone), alpha = 0.2) +
+  labs(fill = 'Datum = WGS84\n \nDevelopment\nzone') +
+  annotation_north_arrow() +
+  theme_minimal()
+```
+
+```{r}
+base +
+  geom_sf(data = control, fill = 'gold', alpha= 0.1) +
+  geom_sf(data = filter(pot_stations, station == 'C0822_2'),
+          color = 'red') +
+  
+  geom_sf(data = filter(pot_stations, station != 'C0822_2')) +
+  coord_sf(xlim = c(-75.2, -74.5), ylim = c(38.1, 38.6)) +
+  theme(axis.text = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12))
+```
+
+```{r}
+base +
+  geom_sf(data = rec_stations,
+          aes(shape = grepl('twin|wash', station)),
+          show.legend = FALSE, size = 3) +
+  coord_sf(xlim = c(-75.2, -74.5), ylim = c(38.1, 38.6)) +
+  theme(axis.text = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12))
+```
+
+```{r}
+gps <- list.files('embargo/gps',recursive = TRUE, full.names = T)
+gps <- grep('repaired/pot/waypoints', gps, ignore.case = T, value = T)
+
+pts <- lapply(gps, read_sf, layer = 'waypoints')|> 
+  bind_rows() |> 
+  filter(grepl('target', cmt, ignore.case = T) |
+         grepl('block1.*deploy', name)) |> 
+  mutate(station = gsub(' .*', '', name),
+         station = ifelse(grepl('^E', station), 'A-7-6', station),
+         station = gsub('_', '-', station),
+         cruise = as.character(format(pts$time, '%y%m')))
+
+
+k <-  pts |> 
+  select(station, cruise, geometry) |> 
+  group_by(station, cruise) |> 
+  nest() |> 
+  mutate(dist_from_target = purrr::map(.x = data,
+                                       .f=  function(.) st_distance(.[1,], .[2,]))) |> 
+  unnest(dist_from_target) |> 
+  summarize(mean(dist_from_target, na.rm = T))
+```
+
+```{r}
+gps_track <- list.files('embargo/gps',recursive = TRUE, full.names = T)
+gps_track <- grep('raw/pot/track_', gps_track, ignore.case = T, value = T)
+
+gpx_ext_fix <- function(x){
+  base <- x |> 
+    as.character() |> 
+    read_html() |>  
+    xml_contents() |> 
+    xml_children()
+  
+  conts <- base |> 
+    xml_text() |> 
+    as.list() |> 
+    data.frame() 
+  
+  names(conts) <- xml_name(base)
+  
+  conts
+}
+
+  
+track <- lapply(gps_track, read_sf, layer = 'tracks')|> 
+  bind_rows() 
+|> 
+    rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx'))) |> 
+  st_cast('LINESTRING') |> 
+  mutate(displaycolor = ifelse(grepl('-20 ', name),
+                                      gsub('Cyan', 'Magenta', displaycolor),
+                                      displaycolor))
+
+```
