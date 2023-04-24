@@ -269,7 +269,7 @@ M. O'Brien pulled pots onboard with the assistance of Capt. B. Harrington, repor
 
 Harrington chevron pots (n=3) were fished between recovery of C2304-1 and C2304-2 trawls.
 
-![Example of chevron pot (NOAA)](Compiled/images/chevron_noaa.png){width="477"}
+![Recovering chevron pots](Compiled/images/chevron.png){fig-align="center"}
 
 The ground line was fouled between the first two "far" pots at site L11, precluding the full 10m spacing. Similarly, the ground line between the 3rd- and 2nd-from-the-end "near" pots never left the funnel of the 2nd-from-the-end pot of L11. Though fish were caught in both pots, this pot was not properly fished and the distance between pots was not a full 10 fa.
 
