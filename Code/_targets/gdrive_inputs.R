@@ -57,9 +57,10 @@ gdrive_download <- function(data_source){
   drive_auth(email = 'obrien@umces.edu')
   
   if(data_source %in% c('rec', 'pot')){
-    survey_dir <- ifelse(survey == 'rec', 'recreational', survey)
+    survey_dir <- ifelse(data_source == 'rec', 'recreational', data_source)
     
-    dest_path <- paste0('embargo/', survey_dir, '_data/', survey,' survey recorded data.xlsx')
+    dest_path <- paste0('embargo/', survey_dir, '_data/',
+                        data_source,' survey recorded data.xlsx')
     
     drive_download(
       as_id(id),
@@ -67,7 +68,7 @@ gdrive_download <- function(data_source){
       overwrite = TRUE
     )
     
-    dest_path
+   return(dest_path)
   }
   
   if(data_source == 'hobo'){
@@ -81,7 +82,8 @@ gdrive_download <- function(data_source){
                      paste0('data/hobo/',
                             to_download$name[i]))
     }
+    
+    list.files('data/hobo', full.names = T)
   }
 
-  list.files('data/hobo', full.names = T)
 }
