@@ -1,25 +1,48 @@
 hobo_clean <- function(raw_data_hobo, raw_data_pot){
   # library(readxl); library(dplyr); library(purrr); library(tidyr)
   # targets::tar_load('raw_data_hobo'); targets::tar_load('raw_data_pot')
-  raw_hobo <- sapply(
-    raw_data_hobo,
+
+  raw_hobo_xlsx <- sapply(
+    raw_data_hobo[grepl('\\.xlsx$', raw_data_hobo)],
     read_xlsx,
     sheet = 'Data',
     simplify = F
   )
+  raw_hobo_xlsx <- lapply(
+    raw_hobo_xlsx,
+    function(.){
+      .$`Date-Time (EDT)` <- as.POSIXct(as.character(.$`Date-Time (EDT)`),
+                                        origin = as.POSIXct('1970-01-01',
+                                                            tz = 'America/New_York'),
+                                        tz = 'America/New_York')
+      setNames(., c('obs_num', 'datetime_edt', 'bwt_c'))
+    }
+  )
   
-  raw_hobo <- bind_rows(raw_hobo, .id = 'file')
+  raw_hobo_csv <- sapply(
+    raw_data_hobo[grepl('\\.csv$', raw_data_hobo)],
+    read.csv,
+    simplify = F
+  )
+  raw_hobo_csv <- lapply(
+    raw_hobo_csv,
+    function(.){
+      .$Date.Time..EDT. <- as.POSIXct(.$Date.Time..EDT.,
+                                      format = '%m/%d/%Y %H:%M:%S')
+      . <- .[, 1:3]
+      setNames(., c('obs_num', 'datetime_edt', 'bwt_c'))
+
+    }
+  )
   
-  colnames(raw_hobo) <- c('file', 'obs_num', 'datetime_edt', 'bwt_c')
+  raw_hobo <- bind_rows(c(raw_hobo_xlsx, raw_hobo_csv), .id = 'file')
+  
   
   hobo_clean <- raw_hobo |>
     mutate(
       hobo_id = as.numeric(gsub('.*/| 202.*', '', `file`)),
-      cruise = gsub('^.*\\d{8} |-\\d{2} .*$', '', `file`),
-      datetime_edt = as.POSIXct(as.character(datetime_edt),
-                                origin = as.POSIXct('1970-01-01',
-                                                    tz = 'America/New_York'),
-                                tz = 'America/New_York'))
+      cruise = gsub('^.*\\d{8} |-\\d{2} .*$', '', `file`)
+    )
 
   pot_station <- raw_data_pot |>
     read_xlsx(sheet = 'Station') |>
@@ -30,9 +53,9 @@ hobo_clean <- function(raw_data_hobo, raw_data_pot){
 
     # "pivot" data to a wider form, renaming columns to refer to
     #   deployment or recovery
-    nest(.by = type) |>
+    tidyr::nest(.by = type) |>
     mutate(
-      data = map2(
+      data = purrr::map2(
         .x = data,
         .y = c('deploy', 'recover'),
         .f = function(d = .x, nms = .y) {
