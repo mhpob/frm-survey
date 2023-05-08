@@ -27,6 +27,83 @@ gpx_ext_fix <- function(x){
   conts
 }
 
+# 2305 pot cruise ----
+tracks <- lapply(
+  list.files('embargo/gps/2305/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('embargo/gps/2305/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+## Create key to rename waypoints
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = '',
+#                      fid = row.names(pts)),
+#           'embargo/gps/2305/repaired/pot/key_pot_2305.csv',
+#           row.names = FALSE, na = '')
+
+pt_key <- read.csv('embargo/gps/2305/repaired/pot/key_pot_2305.csv',
+                   na.strings = '') 
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new'))) |> 
+  select(-fid)
+
+st_write(pts, 'embargo/gps/2305/repaired/pot/waypoints_repaired_20230502.gpx',
+         delete_dsn = T)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- pts |> 
+  filter(grepl('B[12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(11, deploy_sites)
+
+recover_sites <- pts |> 
+  filter(grepl('B[12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(1, recover_sites)
+
+## Update times
+deploy_times <- pts |> 
+  filter(grepl('B[1] deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- pts |> 
+  filter(grepl('B[2] recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
 # 2304 pot cruise ----
 tracks <- lapply(
   list.files('embargo/gps/2304/raw/pot', full.names = T, pattern = '^Track.*gpx'),
