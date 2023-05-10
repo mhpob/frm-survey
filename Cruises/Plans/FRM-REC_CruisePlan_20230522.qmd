@@ -47,20 +47,25 @@ set.seed(params$seed)
 
 exp_sites <- turbines |>
   DT(grepl('^[JKLMNOPQR]', ID) & location == 'inner') |>
+  # first selected will be surveyed the first day,
+  #   second selected will be surveyed the second day
   DT(sample(.N, 2)) |>
   DT(, .(station = ID, geometry = geom)) |>
   st_as_sf()
 
-ctrl_sites <- data.frame(
+ctrl_sites <- data.table(
   station = c('Twin Wrecks', 'Great Eastern Reef'),
   lat = c(38.23071, 38.43049),
   long = c(-74.75808, -74.76770)
-) |> 
+)
+
+ctrl_sites <- 
+  # Randomize order by day
+  ctrl_sites[sample(1:nrow(ctrl_sites))] |> 
   st_as_sf(coords = c('long', 'lat'),
            crs = 4326)
 
 stations <- rbind(ctrl_sites, exp_sites)
-stations <- stations[sample(1:nrow(stations)),]
 
 ocmd <- c(-75.10333, 38.32742) %>% 
   st_point() %>% 
@@ -80,19 +85,12 @@ stations[, ':='(lon_dm = dm(lon),
 
 stations <- st_as_sf(stations)
 
-trip <- list(d1 = stations[c(1, 2, 3),],
-             d2 = stations[c(1, 4, 5),])
+trip <- list(
+  # sample() randomizes order within day
+  d1 = stations[c(1, sample(c(2, 4))),],
+  d2 = stations[c(1, sample(c(3, 5))),]
+)
 
-```
-
-```{r}
-#| label: tsp
-
-tsp <- lapply(trip, function(.) TSP(as.dist(st_distance(.))))
-
-tour <- lapply(tsp, function(.) solve_TSP(., method = 'farthest_insertion'))
-
-path <- lapply(tour, function(.) c(cut_tour(., 1, exclude_cut = FALSE), 1))
 ```
 
 ```{r}
@@ -152,8 +150,8 @@ survey_seq <- list()
 
 for(i in 1:2){
   survey_seq[[i]] <-
-    data.table(start = trip[[i]]$station[path[[i]][1:(length(path[[i]]) - 1)]],
-               end = trip[[i]]$station[path[[i]][2:length(path[[i]])]],
+    data.table(start = trip[[i]]$station,
+               end = trip[[i]]$station[c(2, 3, 1)],
                sttime = c(as.POSIXct(params$start[[i]]), rep(NA, 2)),
                endtime = c(as.POSIXct(params$start[[i]]), rep(NA, 2)),
                jig = c(as.POSIXct(params$start[[i]]), rep(NA, 2)),
@@ -166,7 +164,7 @@ for(i in 1:2){
   # drop time (3 min) plus 2 min changeover
   survey_seq[[i]][1, drop := jig + 15 * (3 + 2) * 60]
   
-  for(j in 2:(length(path[[i]]) - 1)){
+  for(j in 2:3){
     survey_seq[[i]][j, sttime := survey_seq[[i]]$drop[j - 1]]
     # travel time
     survey_seq[[i]][j, endtime := sttime + time_matrix_raw[start, end] * 3600]
@@ -177,7 +175,6 @@ for(i in 1:2){
   }
 }
 ```
-
 
 ## Participants
 
@@ -275,13 +272,13 @@ leaflet() |>
   addCircleMarkers(data = stations, label = ~ station) |> 
   addPolylines(data = st_sfc(
     st_cast(
-      do.call(c, st_geometry(trip[[1]][c(path$d1),])),
+      do.call(c, st_geometry(trip[[1]])[c(1, 2, 3, 1)]),
       'LINESTRING'
     ), crs = 4326
   ), color = 'blue') |>
   addPolylines(data = st_sfc(
     st_cast(
-      do.call(c, st_geometry(trip[[2]][c(path$d2),])),
+      do.call(c, st_geometry(trip[[2]])[c(1, 2, 3, 1)]),
       'LINESTRING'
     ), crs = 4326
   ), color = 'green') |> 
@@ -377,4 +374,3 @@ time_matrix_pretty |>
                                                     'kts')
   )
 ```
-
