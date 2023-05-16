@@ -5,7 +5,11 @@ find_gdrive_cue <- function(data_source){
                pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM',
                hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx')
   
-  drive_auth(email = 'obrien@umces.edu')
+  if(Sys.info()['nodename'] == 'acadnet-delphinus'){
+    googledrive::drive_auth(token = readRDS(".secrets/MOBtoken"))
+  }else{
+    drive_auth(email = 'obrien@umces.edu')
+  }
   
   if(data_source %in% c('rec', 'pot')){
     gd_update <- as.POSIXct(
