@@ -6,7 +6,8 @@ library(future)
 # Set target options:
 tar_option_set(
   # packages that your targets need to run
-  packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr'), 
+  packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr',
+               'xml2'), 
   # default storage format
   format = "feather" 
   # Set other options as needed.
@@ -54,6 +55,34 @@ list(
              ),
   ),
 
+  # # GPS inputs
+  # tar_files_input(gps_dirs,
+  #                 grep(
+  #                   'RAW/(Pot|Rec)',
+  #                   list.dirs('embargo/gps', full.names = T),
+  #                   value = T
+  #                 )
+  # ),
+  # 
+  # ## tracks
+  # tar_target(track_data,
+  #            gpx_read_tracks(gps_dirs),
+  #            pattern = map(gps_dirs)
+  # ),
+  # 
+  # ## points
+  # tar_target(pt_data,
+  #            gpx_read_pts(gps_dirs),
+  #            pattern = map(gps_dirs)
+  # ),
+  # 
+  # tar_file(pt_key,
+  #          gpx_make_pt_key(pt_data)
+  #          ),
+  # 
+  # tar_file(pt_repaired, gpx_repair_pts(pt_data, pt_key)),
+  
+  
   
   # Geospatial inputs
   tar_file(
