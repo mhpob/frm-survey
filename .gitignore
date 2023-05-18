@@ -19,6 +19,6 @@
 *.shx
 
 # Embargoed data
-embargo/
+EMBARGO/
 
 /.quarto/
