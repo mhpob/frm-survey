@@ -52,7 +52,7 @@ set.seed(params$seed)
 ctrl_sites <- ctrl_area |> 
   st_transform(26918) |>
   st_buffer(dist = -units::set_units(550, 'meter')) |>
-  st_sample(params$n_control)|> 
+  st_sample(params$n_control) |> 
   st_as_sf() |> 
   st_transform(4326) |>
   DT(order(st_coordinates(x)[, 1])) |> 
@@ -83,13 +83,13 @@ ocmd <- c(-75.10333, 38.32742) %>%
   st_sf(geometry = .,
         station = 'OCMD')
 
-rtwb <- c(-74.645, 38.303) |> 
-  st_point() |> 
-  st_sfc(crs = 4326) |> 
-  st_sf(geometry = _,
-        station = 'RTWB')
+# rtwb <- c(-74.645, 38.303) |> 
+#   st_point() |> 
+#   st_sfc(crs = 4326) |> 
+#   st_sf(geometry = _,
+#         station = 'RTWB')
 
-stations <- rbind(ocmd, rtwb, ctrl_sites, exp_sites)
+stations <- rbind(ocmd, ctrl_sites, exp_sites)
 
 setDT(stations)[, ':='(lon = st_coordinates(geometry)[,1],
                        lat = st_coordinates(geometry)[,2])]
@@ -167,9 +167,9 @@ time_matrix_pretty <- tf(nm_matrix, params$vessel_sp_kts)
 
 deploy_seq <- data.table(start = stations$station[path[1:(length(path) - 1)]],
                          end = stations$station[path[2:length(path)]],
-                         sttime = c(as.POSIXct(params$start$d1) + 30*60, rep(NA, 7)),
-                         endtime = c(as.POSIXct(params$start$d1), rep(NA, 7)),
-                         pots = c(as.POSIXct(params$start$d1), rep(NA, 7)))
+                         sttime = c(as.POSIXct(params$start$d1) + 30*60, rep(NA, 6)),
+                         endtime = c(as.POSIXct(params$start$d1), rep(NA, 6)),
+                         pots = c(as.POSIXct(params$start$d1), rep(NA, 6)))
 deploy_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
 deploy_seq[1, pots := endtime + 10 * 60]
 
@@ -179,19 +179,16 @@ for(i in 2:(length(path)-1)){
   deploy_seq[i, pots := endtime + 10 * 60]
 }
 
-no_rtwb_station <- stations[stations$station != 'RTWB',]
-no_rtwb_path <- path[path != 2]
-no_rtwb_path[no_rtwb_path >1] <- no_rtwb_path[no_rtwb_path >1]- 1
 
-rec_seq <- data.table(start = no_rtwb_station$station[no_rtwb_path[1:(length(no_rtwb_path) - 1)]],
-                         end = no_rtwb_station$station[no_rtwb_path[2:length(no_rtwb_path)]],
+rec_seq <- data.table(start =stations$station[path[1:(length(path) - 1)]],
+                         end = stations$station[path[2:length(path)]],
                          sttime = c(as.POSIXct(params$start$d2) + 30*60, rep(NA, 6)),
                          endtime = c(as.POSIXct(params$start$d2), rep(NA, 6)),
                          pots = c(as.POSIXct(params$start$d2), rep(NA, 6)))
 rec_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
 rec_seq[1, pots := endtime + 15 * 60]
 
-for(i in 2:(length(no_rtwb_path)-1)){
+for(i in 2:(length(path)-1)){
   rec_seq[i, sttime := rec_seq$pots[i-1]]
   rec_seq[i, endtime := sttime + time_matrix_raw[start, end] * 3600]
   rec_seq[i, pots := endtime + 15 * 60]
@@ -204,16 +201,14 @@ for(i in 2:(length(no_rtwb_path)-1)){
 ::: {.column width="50%"}
 ### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
 
--   [Dave Secor](mailto:secor@umces.edu)
--   [Kirsten Silva](mailto:ksilva@umces.edu)
+-   [Mike O'Brien](mailto:obrien@umces.edu)
 -   [Evan Kostelecky](mailto:ekostelecky@umces.edu)
 :::
 
 ::: {.column width="50%"}
 ### `r paste(format(as.POSIXct(params$start$d1), '%d %B'), format(as.POSIXct(params$start$d2), '%d %B'), sep = ' - ')`
 
--   [Dave Secor](mailto:secor@umces.edu)
--   [Kirsten Silva](mailto:ksilva@umces.edu)
+-   [Mike O'Brien](mailto:obrien@umces.edu)
 -   [Evan Kostelecky](mailto:ekostelecky@umces.edu)
 -   Capt. Brandon Harrington
 -   *Integrity* mate
@@ -224,18 +219,17 @@ for(i in 2:(length(no_rtwb_path)-1)){
 
 ### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
 
--   Scientific crew (DS, KS, EK)
-    -   08:00 - 09:00 DS/KS/EK pack CBL truck (2017 Silverado) at Solomons, MD. Drive to MD Coastal Bays Program office.
+-   Scientific crew (MOB, EK)
+    -   08:00 - 09:00 MOB/EK pack CBL truck (2017 Silverado) at Solomons, MD. Drive to MD Coastal Bays Program office.
         -   8219 Stephen Decatur Hwy, Berlin, MD 21811
     -   13:00 - 13:20 Load pots and two rope drums onto trailer.
     -   13:20 - 13:30 Drive to Sea Born LLC.
         -   12906 Sunset Ave, Ocean City, MD 21842
--   Full crew (DS, KS, EK, BH, mate)
+-   Full crew (MOB, EK, BH, mate)
     -   13:30 - 14:00 Unload pots. BH/mate begin loading pots onto vessel.
-    -   14:00 - 16:00 DS/KS/EK drive to MD Coastal Bays Program. Repeat pot loading/return/unloading.
+    -   14:00 - 16:00 MOB/EK drive to MD Coastal Bays Program. Repeat pot loading/return/unloading.
     -   16:00 - 16:30 Drop trailer off at MDCBP. Return to W Ocean City.
-    -   16:30 Check into Microtel
-        -   12536 Ocean Gateway, Ocean City, MD 21842
+    -   16:30 Check into Beach Bum West-O
 
 ### `r format(as.POSIXct(params$start$d1), '%d %B')`
 
@@ -250,7 +244,7 @@ for(i in 2:(length(no_rtwb_path)-1)){
 ### `r format(as.POSIXct(params$start$d2), '%d %B')`
 
 -   Scientific crew
-    -   `r format(as.POSIXct(params$start$d2) - 20*60, '%H:%M')` Check out of Microtel
+    -   `r format(as.POSIXct(params$start$d2) - 20*60, '%H:%M')` Check out of Beach Bum West-O
 -   Full crew
     -   `r format(as.POSIXct(params$start$d2), '%H:%M')` Arrive at F/V Integrity
     -   `r paste(format(rec_seq$sttime[1], '%H:%M'), format(rec_seq$endtime[7], '%H:%M'), sep = ' - ')`: Fish pot recovery aboard F/V Integrity
@@ -296,8 +290,6 @@ for(i in 2:(length(no_rtwb_path)-1)){
 🔲 Samsung tablet
 
 🔲 Release transponder/box
-
-🔲 \>2 release cages
 :::
 :::
 
@@ -317,7 +309,7 @@ for(i in 2:(length(no_rtwb_path)-1)){
 
 ::: {.column width="50%"}
 -   GPS
-    -   Set waypoint prefix to "2306-2"
+    -   Set waypoint prefix to "`r substr(params$seed, 3, 6)`"
         -   From the main menu, select Setup, then Waypoints, then change prefix
     -   Start recording track upon arrival
         -   From map screen, press **ENTER** twice
@@ -418,9 +410,7 @@ leaflet() |>
 -   `r format(deploy_seq$endtime[6], '%H:%M')` Arrive **`r deploy_seq$end[6]`**. Deploy pots.
 -   `r format(deploy_seq$pots[6], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[7]`**
 -   <font size= "5"> **`r stations[stations$station == deploy_seq$end[7],]$lat_dm`, `r stations[stations$station == deploy_seq$end[7],]$lon_dm`** </font>
--   `r format(deploy_seq$endtime[7], '%H:%M')` Arrive **`r deploy_seq$end[7]`**. Deploy pots.
--   `r format(deploy_seq$pots[7], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[8]`**
--   `r format(deploy_seq$endtime[8], '%H:%M')` Arrive **`r deploy_seq$end[8]`**
+-   `r format(deploy_seq$endtime[7], '%H:%M')` Arrive **`r deploy_seq$end[7]`**.
 :::
 :::
 

@@ -1,0 +1,472 @@
+---
+title: "Cruise Report: 2023-06-26 : 06-28"
+subtitle: "Pot survey"
+author: "Mike O'Brien (UMCES)"
+format:
+    html:
+      self-contained: true
+echo: false
+warning: false
+editor: visual
+params:
+  st_date: '2023-06-26'
+  end_date: '2023-06-28'
+---
+
+```{r}
+#| message: false
+#| warning: false
+#| label: packages
+
+library(sf); library(dplyr); library(leaflet); library(targets); library(xml2)
+library(readxl); library(ggplot2); library(plotly); library(gt)
+```
+
+```{r}
+#| label: parameters
+
+# cruise_id <- gsub('20|-|\\d{2}$', '', params$end_date)
+cruise_id <- '2306_2'
+
+```
+
+```{r}
+#| label: geo-base
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+
+towers <- st_read(tar_read(usw_locations),
+                  layer = 'WTG_Layout_2022_0111',
+                  quiet = T)
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+ctrl_area <- st_read(tar_read(frm_control),
+                     quiet = T)
+```
+
+```{r}
+#| label: waypoints
+pts <- read_sf(
+  file.path('embargo/gps',
+            cruise_id,
+            'repaired/pot',
+            paste0('waypoints_repaired_', 
+                   gsub('-', '', params$st_date),
+                   '.gpx')
+            ),
+  layer = 'waypoints') |> 
+  
+  mutate(grp = case_when(grepl('C.*-1', name) ~ 'Control 1',
+                         grepl('C.*-2', name) ~ 'Control 2',
+                         T ~ gsub(' .*', '', name)),
+         action = case_when(grepl('deploy', name) ~ 'Deployment',
+                            grepl('recover', name) ~ 'Recovery',
+                            T ~ 'Target'))
+```
+
+```{r}
+#| warning: false
+#| label: tracks
+gpx_ext_fix <- function(x){
+  base <- x |> 
+    as.character() |> 
+    read_html() |>  
+    xml_contents() |> 
+    xml_children()
+  
+  conts <- base |> 
+    xml_text() |> 
+    as.list() |> 
+    data.frame() 
+  
+  names(conts) <- xml_name(base)
+  
+  conts
+}
+
+tracks <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/pot'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'tracks', quiet = T
+) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx'))) |> 
+  st_cast('LINESTRING') |> 
+  mutate(displaycolor = ifelse(grepl('-20 ', name),
+                                      gsub('Cyan', 'Magenta', displaycolor),
+                                      displaycolor))
+
+track_points <- lapply(
+  list.files(
+    file.path('embargo/gps',
+              cruise_id, 'raw/pot'),
+    full.names = T,
+    pattern = '^Track.*gpx'),
+  st_read, layer = 'track_points', quiet = T
+)
+```
+
+```{r}
+#| label: recorded-data
+cpue <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                   sheet = 'CPUE',
+                   na = c('', 'NA')) |> 
+  rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         month = month.name[data.table::month(recover_date)],
+         month = factor(month, levels = month.name, ordered = T),
+         year = data.table::year(recover_date))
+
+cpue_subset <- cpue |> 
+  filter(between(recover_date,
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date))) |> 
+  mutate(species = factor(species,
+                          levels = c('black sea bass', 'n searobin',
+                                     'scup', 'rock crab', 'jonah crab',
+                                     'spider crab',
+                                     'sand dollar', 'sea star', NA),
+                          ordered = T)) 
+
+cpue_tally <- cpue_subset |>
+  group_by(species) |>
+  tally()
+
+n_pots <- cpue_subset |>
+  group_by(station) |>
+  distinct(pot_id) |>
+  nrow()
+
+bsb_cpue <- cpue |> 
+  filter(species == 'black sea bass') |> 
+  full_join(
+    distinct(cpue, recover_date, station, pot_position, .keep_all = T)
+  ) |> 
+  mutate(catch = if_else(species != 'black sea bass' | is.na(catch), 0, catch),
+         species = 'black sea bass')
+
+bsb_cpue_subset <-  bsb_cpue |> 
+  filter(between(recover_date,
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date)))
+
+
+measures <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                            sheet = 'Measurements',
+                           na = c('', 'NA')) |> 
+  rename_all(function(.) tolower(gsub('[ \\/]', '_', .))) |> 
+  mutate(stratum = ifelse(grepl('^C', station), 'Control', 'Project'),
+         # call this cruise "September". Different from prev. months
+         month = month.name[data.table::month(date)],
+         month = factor(month, levels = month.name, ordered = T),
+         year = data.table::year(date))
+
+measures_subset <- measures |> 
+  filter(species == 'black sea bass',
+         between(date,
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date))) 
+  
+
+stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
+                            sheet = 'Station') |> 
+  rename_all(tolower) |> 
+  mutate(datetime = as.POSIXct(gsub(':00$', '00', datetime), 
+                               format = '%Y-%m-%dT%T %z')) |> 
+  filter(between(datetime,
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date) + 60*60*24))
+```
+
+## General notes
+
+Three release cages were used in this survey: sites C2306_2-2, N11, and L10, respectively.
+
+## Participants
+
+-   Dave Secor (UMCES)
+-   Kirsten Silva (UMCES)
+-   Evan Kostelecky
+-   Capt. Brendan Harrington (*F/V Integrity*)
+-   Reilly (*F/V Integrity* mate, 27 June)
+-   Connor (*F/V Integrity* mate, 28 June)
+
+## Pot deployment cruise, 2023-06-27
+
+```{r}
+st_end_time <- function(ind){
+  track_points[[ind]][c(1, nrow(track_points[[ind]])),]
+}
+```
+
+### Overall
+
+-   03:00 Meet at *F/V Integrity*, prepare for departure.
+-   03:30 Depart dock, transit to **C2306_2-1** (control site).
+-   06:04 Arrive at **C2306_2-1**.
+    -   06:06 Begin deploying pots.
+    -   06:10 Finish deploying pots, transit to **C2306_2-2** (control site).
+-   06:53 Arrive at **C2306_2-2**.
+    -   06:57 Begin deploying pots; release cage E36D included.
+    -   07:01 Finish deploying pots, transit to **O11** (experimental turbine site).
+-   07:47 Arrive at **O11**.
+    -   07:48 Begin deploying pots.
+    -   07:52 Finish deploying pots, transit to **N11**.
+-   08:00 Arrive at **N11**.
+    -   08:02 Begin deploying pots; release cage E335 included.
+    -   08:06 Finish deploying pots. Transit to **RTWB**.
+-   08:16 Arrive at **RTWB**.
+    -   Take pictures and video. Transit to **L10** (experimental turbine site).
+-   08:25 Arrive at **L10**.
+    -   08:27 Begin deploying pots; release cage BCB included.
+    -   08:31 Finish deploying pots, transit to **K08** (experimental turbine site).
+-   08:49 Arrive at **K08**.
+    -   08:51 Begin deploying pots.
+    -   08:55 Finish deploying pots. Return to West Ocean City, MD.
+-   c12:30 Arrive in West Ocean City, MD.
+
+### Description
+
+#### Survey deployment
+
+Capt. Brendan Harrington and mates retrieved the pots from the Maryland Coastal Bays program and stacked the pots on the boat.
+
+Wind speed was10-15 knots, coming from the N. Waves were 3-5 ft. Cloud cover was 60-80% of the sky. Surface temperature as reported by the satellite chart plotter was 70-72 F. Control sites ranged in depth from 93-133 ft, with turbine sites ranging from 87-116 ft.
+
+[Onset HOBO temperature loggers](https://www.onsetcomp.com/products/data-loggers/mx2201) were attached to the ropeless cages and deployed at a control (C2306_2-2) and turbine (K08) site to log bottom temperature at 10 minute intervals during deployment.
+
+## Pot recovery cruise, 2023-06-28
+
+### Overall
+
+-   02:30 Meet at *F/V Integrity*, prepare for departure.
+-   c02:50 Depart dock, transit to **C2306_2-1**.
+-   05:14 Arrive at **C2306_2-1**.
+    -   05:20 Near block recovered.
+    -   05:30 Far block recovered; pot recovery complete. Transit to **C2306_2-2**.
+-   06:24 Arrive **C2306_2-2**. Begin pot recovery approach.
+    -   06:24 Near block recovered.
+    -   06:36 Far block (release cage) recovered; pot recovery complete. Transit to **O11**.
+-   07:22 Arrive **O11**. Begin pot recovery approach.
+    -   07:22 Near block recovered.
+    -   07:30 Far block recovered; pot recovery complete. Transit to **N11**.
+-   07:44 Arrive **N11**. Begin pot recovery approach.
+    -   07:52 Near block recovered.
+    -   08:02 Far block (release cage) recovered; pot recovery complete. Transit to **L10**.
+-   08:55 Arrive **L10**. Begin pot recovery approach.
+    -   08:57 Near block recovered.
+    -   09:06 Far block (release cage) recovered; pot recovery complete. Transit to **K08**.
+-   09:25 Arrive **K08**. Begin pot recovery approach.
+    -   09:28 Near block recovered.
+    -   09:36 Far block recovered; pot recovery complete.
+-   09:36 End survey, return to West Ocean City, MD.
+-   12:30 Arrive in West Ocean City, MD.
+
+### Description {#pot-recovery-description}
+
+Wind speed was 10 knots from the N as reported by Capt. Harrington. Waves were 3 feet. Cloud cover was 30% of the sky, decreasing to 10% at the end of the survey. Surface temperature as reported by the satellite chart plotter was 71-72 F.
+
+HOBO temperature loggers were successfully recovered from the rigs at C2306_2-2 and K08.
+
+Dominant species were black sea bass (`r filter(cpue_tally, species == 'black sea bass')$n`) and Jonah crab (`r filter(cpue_tally, species == 'jonah crab')$n`). `r filter(cpue_tally, is.na(species))$n` of the `r n_pots` recovered pots were empty.
+
+There was a significant difference in black sea bass catch between near and far sections of the lines (Poisson GLM, $p <$ 0.05), but no difference between turbine and control sites (Poisson GLM, $p >$ 0.05).
+
+```{r}
+#| echo: false
+#| eval: false
+
+summary(
+  lme4::glmer(catch ~ near_far + stratum + (1|station),
+              data = bsb_cpue_subset,
+              family = 'poisson')
+)
+
+# Near/far chisq
+# chisq.test(cpue_subset[cpue_subset$species == 'black sea bass',]$near_far,
+#            cpue_subset[cpue_subset$species == 'black sea bass',]$catch,
+#            simulate.p.value = TRUE)
+# # Control/turbine chisq
+# chisq.test(grepl('^C', cpue_subset[cpue_subset$species == 'black sea bass',]$station),
+#            cpue_subset[cpue_subset$species == 'black sea bass',]$catch,
+#            simulate.p.value = TRUE)
+```
+
+Total length (mm) and weight (g) of all black sea bass were recorded. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measures_subset$tl_mm, na.rm = T)` - `r max(measures_subset$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measures_subset$tl_mm, na.rm = T))` mm (minimum legal size 320 mm). Weights ranged from `r min(measures_subset$wt_g, na.rm = T)` - `r max(measures_subset$wt_g, na.rm = T)` g, mean of `r floor(mean(measures_subset$wt_g, na.rm = T))` g.
+
+Black sea bass were significantly larger and heavier in the far pots as compared to near and turbine sites as compared to control sited (ANOVA, all $p <$ 0.05).
+
+```{r}
+#| echo: false
+#| eval: false
+
+# Near/Far ANOVA
+summary(lm(tl_mm ~ near_far, data = measures_subset))
+summary(lm(wt_g ~ near_far, data = measures_subset))
+# Control/turbine ANOVA
+summary(lm(tl_mm ~ stratum, data = measures_subset))
+summary(lm(wt_g ~ stratum, data = measures_subset))
+```
+
+Catch and size data summaries are shown in the [sample summary section](#sample-summary) below.
+
+## Station information
+
+```{r}
+#| label: station-info
+stations |>
+  select(-c(old_station, hobo_id)) |> 
+  gt(groupname_col = 'type',
+     rowname_col = 'station') |> 
+  fmt_number(columns = starts_with(c('lon', 'lat')),
+             decimals = 5) |> 
+  tab_options(table.font.size = 10) |> 
+  as_raw_html()
+```
+
+### Bottom temperature
+
+```{r}
+#| label: hobo
+hobo <- tar_read(hobo) |> 
+  filter(between(datetime_edt,
+                 as.POSIXct(params$st_date),
+                 as.POSIXct(params$end_date) + 60*60*24),
+         !is.na(bwt_c))
+
+ggplotly(
+  ggplot(data = hobo) +
+    geom_line(aes(x = datetime_edt, y = bwt_c)) +
+    labs(x = NULL, y = 'Bottom temperature (C)') +
+    facet_wrap(~ station, ncol = 1) +
+    theme_minimal()
+)
+```
+
+## Cruise map {#cruise-map}
+
+```{r}
+#| label: cruise-map
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 10) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |>
+  addCircleMarkers(data = pts, label = ~ name,
+                   clusterId = ~ grp,
+                   color = ~ colorFactor(c('red', 'blue', 'green'), pts$action)(action),
+                   clusterOptions = markerClusterOptions(
+                     disableClusteringAtZoom = 15,
+                     zoomToBoundsOnClick = T),
+                   group = 'Waypoints') |> 
+  addPolylines(data = filter(tracks, grepl(format(min(pts$time), '%Y-%m-%d'), name)),
+               color = ~ 'Magenta',
+               group = 'Deployment tracks') |>
+  addPolylines(data = filter(tracks, grepl(format(max(pts$time), '%Y-%m-%d'), name)),
+               color = 'Cyan',
+               group = 'Recovery tracks') |>
+  addPolygons(data = zones, color = c('red', 'yellow', 'green'),
+              group = 'Development Zone') |>
+  addPolygons(data = ctrl_area, color = 'gray', group = 'Control Zone') |>
+  addCircles(data = towers,
+             color = 'red', radius = 20, group = 'Turbines') |> 
+  addLayersControl(overlayGroups = c('Waypoints', 'Deployment tracks', 'Recovery tracks',
+                                     'Turbines', 'Development Zone', 'Control Zone'),
+                   options = layersControlOptions(collapsed = FALSE)) |>
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```
+
+## Sample summary {#sample-summary}
+
+### Catch
+
+```{r}
+#| message: false
+bsb_cpue |> 
+  group_by(year, month, stratum, near_far) |> 
+  summarise(N = sum(catch, na.rm = T),
+            min = min(catch, na.rm = T),
+            average = round(mean(catch, na.rm = T),1),
+            med = round(median(catch), 1),
+            max = max(catch, na.rm = T),
+            sd = round(sd(catch, na.rm = T), 2)) |>
+  left_join(measures |>
+              group_by(month, stratum, near_far) |>
+              summarize(retained = sum(retained == 'Y', na.rm = T))) |> 
+  gt(groupname_col = c('month', 'year', 'stratum'),
+     rowname_col = c('near_far')) |> 
+  # tab_options(row_group.as_column = TRUE) |>
+  tab_header(title = 'Black sea bass catch') |> 
+  # summary_rows(groups = T,
+  #              fns = 'sum')
+  
+
+  summary_rows(groups = T, fns = c(Total = 'sum'),
+               columns = N, missing_text = '',
+               decimals = 0) |> 
+  as_raw_html()
+  
+```
+
+#### Late-June 2023 catch
+
+The blank bars on the right show the count of pots with no catch.
+
+```{r}
+#| label: catch-plot
+ggplotly(
+  ggplot(data = cpue_subset) +
+    geom_bar(aes(x = species)) +
+    scale_y_continuous(breaks = seq(0, 10, 2)) +
+    facet_grid(station ~ near_far) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = -30))
+)
+```
+
+### Fish measurements {#measurements}
+
+#### Total length (mm)
+
+```{r}
+#| label: length-plot
+ggplotly(
+  ggplot(data = filter(measures_subset, species == 'black sea bass')) +
+    geom_histogram(aes(x = tl_mm, fill = retained), binwidth = 10) +
+    facet_grid(station ~ near_far) 
+)
+```
+
+#### Weight (g)
+
+```{r}
+#| warning: false
+#| label: weight-plot
+ggplotly(
+  ggplot(data = filter(measures_subset, species == 'black sea bass')) +
+    geom_histogram(aes(x = wt_g, fill = retained), binwidth = 20) +
+    facet_grid(station ~ near_far)
+)
+```
+
+#### Sex
+
+```{r}
+#| warning: false
+#| label: sex-plot
+ggplotly(
+  ggplot(data = filter(measures_subset, species == 'black sea bass')) +
+    geom_bar(aes(x = sex)) +
+    facet_grid(station ~ near_far)
+)
+```

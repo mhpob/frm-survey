@@ -1,0 +1,495 @@
+---
+title: 'Recreational Survey -- August 2023'
+subtitle: "August 14-16, 2023   [*F/V Fin Chaser*](https://finchasersportfishing.com/)   Ocean City, MD"
+format: html
+editor: visual
+echo: false
+message: false
+warning: false
+params:
+  seed: 20230814
+  vessel_sp_kts: 12
+  start:
+    value: 
+      d1: '2023-08-15 06:00'
+      d2: '2023-08-16 06:00'
+  buoys: FALSE
+---
+
+```{r}
+#| label: packages
+
+library(sf); library(ggplot2); library(concaveman); library(TSP); library(units)
+library(data.table); library(targets)
+```
+
+```{r}
+#| label: towers
+
+turbines <- usw_locations |> 
+  tar_read() |> 
+  st_read(layer = 'WTG_Layout_2022_0111', quiet = TRUE)
+
+turbine_boundary <- concaveman::concaveman(turbines)
+
+setDT(turbines)[c(st_contains(turbine_boundary,
+                           st_buffer(geom, units::as_units(10, 'meters')),
+                           sparse = F)), location := 'inner']
+turbines[is.na(location), location := 'outer']
+
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+zones <- zones[zones$zone == 'A', ]
+```
+
+```{r}
+#| label: stations
+set.seed(params$seed)
+
+exp_sites <- turbines |>
+  DT(grepl('^[JKLMNOPQR]', ID) & location == 'inner') |>
+  # first selected will be surveyed the first day,
+  #   second selected will be surveyed the second day
+  DT(sample(.N, 2)) |>
+  DT(, .(station = ID, geometry = geom)) |>
+  st_as_sf()
+
+ctrl_sites <- data.table(
+  station = c('Twin Wrecks', 'Washingtonian'),
+  lat = c(38.23071, 38.43049),
+  long = c(-74.75808, -74.76770)
+)
+
+ctrl_sites <- 
+  # Randomize order by day
+  ctrl_sites[sample(1:nrow(ctrl_sites))] |> 
+  st_as_sf(coords = c('long', 'lat'),
+           crs = 4326)
+
+stations <- rbind(ctrl_sites, exp_sites)
+
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        station = 'ocmd')
+
+stations <- rbind(ocmd, stations)
+
+if(params$buoys == TRUE){
+  buoys <- data.table(
+    station = c('rtwb', 'metocean'),
+    lat = c(38.303, 38.35277),
+    long = c(-74.645, -74.75365)
+  ) |> 
+    st_as_sf(coords = c('long', 'lat'),
+             crs = 4326)
+  
+  stations <- rbind(stations, buoys)
+}
+
+setDT(stations)[, ':='(lon = st_coordinates(geometry)[,1],
+                       lat = st_coordinates(geometry)[,2])]
+dm <- function(x){
+  paste(as.integer(x), round((abs(x) %% 1) * 60, 4))
+}
+stations[, ':='(lon_dm = dm(lon),
+                lat_dm = dm(lat))]
+
+stations <- st_as_sf(stations)
+```
+
+```{r}
+trip <- list(
+  # sample() randomizes order within day
+  d1 = stations[c(1, sample(c(2, 4))),],
+  d2 = stations[c(1, sample(c(3, 5))),]
+)
+
+path <- list(
+  d1 = c(1:3, 1),
+  d2 = c(1:3, 1)
+)
+
+if(params$buoys == TRUE){
+  trips <- list(rbind(trip$d1, stations[c(6, 7),]),
+                trip$d2,
+                trip$d1,
+                rbind(trip$d2, stations[c(6, 7),]),
+                rbind(trip$d1, stations[6,]),
+                rbind(trip$d2, stations[7,]),
+                rbind(trip$d1, stations[7,]),
+                rbind(trip$d2, stations[6,]))
+  
+  tsp <- lapply(trips, function(.){
+    . |> 
+      st_distance() |> 
+      as.dist() |> 
+      TSP()
+  })
+  
+  tour <- lapply(tsp,
+                 solve_TSP,
+                 method = 'farthest_insertion')
+  
+  t_lengths <- lapply(tour,
+                      tour_length)
+  
+  shortest <- which.min(
+    sapply(list(1:2, 3:4, 5:6, 7:8),
+                   function(.) sum(unlist(t_lengths[.]))
+           )
+    )
+  
+  path <- list(
+    d1 = c(cut_tour(tour[[shortest * 2 - 1]], 1,
+                    exclude_cut = FALSE), 1),
+    d2 = c(cut_tour(tour[[shortest * 2]], 1,
+                    exclude_cut = FALSE), 1)
+  )
+  
+  trip <- list(
+    d1 = trips[[shortest * 2 - 1]][path$d1,],
+    d2 = trips[[shortest  *2]][path$d2,]
+  )
+  
+}
+```
+
+```{r}
+#| label: calc-dist-matrices
+
+dist_calc <- function(stations, new_unit = 'nautical_mile'){
+  dist_mat <- st_distance(stations)
+  
+  dist_mat <- set_units(dist_mat, new_unit, mode = 'standard')
+  
+  rownames(dist_mat) <- stations$station
+  colnames(dist_mat) <- stations$station
+
+  dist_mat
+}
+
+tf <- function(dist_mat, speed, pretty = T){
+  mat <- dist_mat |>
+    as.numeric() |>
+    matrix(ncol = sqrt(length(dist_mat)))
+  
+  if(pretty == T){
+  mat <- (mat / speed) * 3600
+  
+  mat <- ceiling(mat / (5 * 60)) * (5 * 60)
+  
+  mat <- as.POSIXct(mat,
+                    tz = 'UTC',
+                    origin = '1970-01-01')
+  
+  mat <- format(mat, '%H h %M m')
+  
+  mat <- matrix(mat, ncol = sqrt(length(mat)))
+  
+  diag(mat) <- '-'
+  
+  }else{
+    mat <- ceiling((mat / speed) * 12) / 12
+    
+    mat <- matrix(mat, ncol = sqrt(length(mat)))
+  }
+  
+  rownames(mat) <- rownames(dist_mat)
+  colnames(mat) <- colnames(dist_mat)
+  
+  mat
+}
+
+nm_matrix <- round(dist_calc(stations), 2)
+time_matrix_raw <- tf(nm_matrix, params$vessel_sp_kts, pretty = F)
+time_matrix_pretty <- tf(nm_matrix, params$vessel_sp_kts)
+```
+
+```{r}
+#| label: cruise-seq
+survey_seq <- list()
+
+for(i in 1:2){
+  n_stations <- length(trip[[i]]$station)
+  
+  survey_seq[[i]] <-
+    data.table(start = trip[[i]]$station[1:n_stations],
+               end = trip[[i]]$station[c(2:n_stations, 1)],
+               sttime = c(as.POSIXct(params$start[[i]]),
+                          rep(NA, n_stations - 1)),
+               endtime = c(as.POSIXct(params$start[[i]]),
+                           rep(NA, n_stations - 1)),
+               jig = c(as.POSIXct(params$start[[i]]),
+                       rep(NA, n_stations - 1)),
+               drop = c(as.POSIXct(params$start[[i]]),
+                        rep(NA, n_stations - 1)))
+  
+  # travel time
+  survey_seq[[i]][1, endtime := sttime + time_matrix_raw[start, end] * 3600]
+  if(survey_seq[[i]][1, end] %in% c('rtwb', 'metocean')){
+    # no jig time
+    survey_seq[[i]][1, jig := endtime]
+    # drop time stands in for 10 min of videos/pictures
+    survey_seq[[i]][1, drop := jig + 10 * 60]
+  }else{
+    # 5 min prep plus jig time (15 min) plus 5 min changeover
+    survey_seq[[i]][1, jig := endtime + (5 + 15 + 5) * 60]
+    # drop time (3 min) plus 2 min changeover
+    survey_seq[[i]][1, drop := jig + 15 * (3 + 2) * 60]
+  }
+
+  
+  for(j in 2:n_stations){
+    survey_seq[[i]][j, sttime := survey_seq[[i]]$drop[j - 1]]
+    # travel time
+    survey_seq[[i]][j, endtime := sttime + time_matrix_raw[start, end] * 3600]
+    if(survey_seq[[i]][j, end] %in% c('rtwb', 'metocean')){
+      # no jig time
+      survey_seq[[i]][j, jig := endtime]
+      # drop time stands in for 10 min of videos/pictures
+      survey_seq[[i]][j, drop := jig + 10 * 60]
+    }else{
+      # jig time (15 min) plus 5 min changeover
+      survey_seq[[i]][j, jig := endtime + (5 + 15 + 5) * 60]
+      # drop time (3 min) plus 2 min changeover
+      survey_seq[[i]][j, drop := jig + 15 * (3 + 2) * 60]
+    }
+  }
+}
+```
+
+## Participants
+
+::: columns
+::: {.column width="50%"}
+### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
+
+-   [Dave Secor](mailto:secor@umces.edu)
+-   [Evan Kostelecky](mailto:ekostelecky@umces.edu)
+:::
+
+::: {.column width="50%"}
+### `r paste(format(as.POSIXct(params$start$d1), '%d %B'), format(as.POSIXct(params$start$d2), '%d %B'), sep = ' - ')`
+
+-   [Dave Secor](mailto:secor@umces.edu)
+-   [Evan Kostelecky](mailto:ekostelecky@umces.edu)
+-   Todd Sumner
+-   [Capt. Dan Stauffer](mailto:finchasersportfishing@gmail.com)
+-   Dave Weller, *Fin Chaser* mate
+:::
+:::
+
+## Schedule
+
+### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
+
+-   Scientific crew (DS, EK)
+    -   Pack CBL truck (2017 Silverado) at Solomons, MD. Drive to West Ocean City, MD
+    -   Purchase dry ice at Safeway in Chester, MD
+        -   1925 Main St, Chester, MD 21619
+    -   Check into the Beach Bum West-O in West Ocean City, MD
+
+### `r format(as.POSIXct(params$start$d1), '%d %B')`
+
+-   Full crew (DS, EK, TS, DS, DW mate)
+    -   `r paste(format(survey_seq[[1]]$sttime[1], '%H:%M'), format(survey_seq[[1]]$endtime[nrow(survey_seq[[1]])], '%H:%M'), sep = ' - ')`: Recreational fishing survey aboard F/V Fin Chaser
+        -   312 Talbot St, Ocean City, MD 21842
+
+### `r format(as.POSIXct(params$start$d2), '%d %B')`
+
+-   Scientific crew
+    -   Check out of Beach Bum West-O
+-   Full crew
+    -   `r paste(format(survey_seq[[2]]$sttime[1], '%H:%M'), format(survey_seq[[2]]$endtime[nrow(survey_seq[[2]])], '%H:%M'), sep = ' - ')`: Recreational fishing survey aboard F/V Fin Chaser
+-   Scientific crew
+    -   Return to Solomons, MD.
+    -   `r format(survey_seq[[2]]$endtime[nrow(survey_seq[[2]])] + 4.5*60*60, '%H:%M')`: Arrive in Solomons. Unpack and return truck.
+
+## Packing list
+
+::: columns
+::: {.column width="33%"}
+🔲 3 fishing rods
+
+🔲 Large cooler
+
+🔲 Sampling bags and bag tags
+
+🔲 Data sheets/clipboard
+:::
+
+::: {.column width="33%"}
+🔲 Two buckets
+
+🔲 GPS
+
+🔲 Stopwatch
+:::
+
+::: {.column width="33%"}
+🔲 MS222
+
+🔲 Measuring board
+
+🔲 Weight bucket with scales
+:::
+:::
+
+## Protocols
+
+::: columns
+::: {.column width="50%"}
+### GPS
+
+-   Set waypoint prefix to "YYMMRec"
+    -   From the main menu, select Setup, then Waypoints, then change prefix
+-   To start recording track, from map screen, press **ENTER** twice
+-   Mark waypoints when jigging or drop starts or ends
+    -   Press **MARK** then **ENTER**
+-   To stop recording track
+    -   From map screen, press **ENTER**, select **STOP**, then **SAVE**
+
+### Data timing
+
+-   Data Recorder (DR) confirms that Captain is ready to begin;
+-   starts recording route;
+-   tells fishers to start and simultaneously marks GPS waypoint;
+-   starts timer;
+-   marks start waypoint and time on data sheet;
+-   says "STOP" when time is up and simultaneously marks GPS waypoint;
+-   stops recording route;
+-   stops timer;
+-   marks end waypoint on data sheet.
+:::
+
+::: {.column width="50%"}
+### Data recording
+
+-   No-catch completed jigs/drops are assumed.
+-   Record if jig/drop is not completed or if a fish is captured
+-   Repeated lines for a jig/drop are only necessary if more than one angler lands a fish or does not complete the jig/drop.
+
+### Jig
+
+-   Jig survey is conducted by the Mate for 15 minutes.
+-   Jigging is resumed if a fish is landed until 15 minutes of active fishing are complete.
+-   Time is paused while jig is out of the water.
+-   All fish are weighed and measured.
+-   First 10 black sea bass are sacrificed.
+
+### Drop
+
+-   15 x 3 minute drops each by 3 anglers, one of which must be the Mate
+-   All fish are weighed and measured.
+-   First 10 black sea bass are sacrificed.
+-   Fishing DOES NOT resume if fish(es) are landed.
+:::
+:::
+
+\newpage
+
+```{r}
+library(leaflet)
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 10) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |> 
+  addPolygons(data = zones, color = 'pink') |>
+  addCircleMarkers(data = stations, label = ~ station) |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(trip$d1)[path$d1]),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'blue') |>
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(trip$d2)[path$d2]),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'green') |> 
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```
+
+## Cruise plan
+
+Times calculated at `r params$vessel_sp_kts` knots.
+
+### `r format(as.POSIXct(params$start$d1), '%d %B')`
+
+::: columns
+::: {.column width="50%"}
+-   `r format(survey_seq[[1]]$sttime[1] - 30 * 60, '%H:%M')`: DHS, KS, TS, DW meet at Talbot St Pier, load gear onto *F/V Fin Chaser*
+-   `r format(survey_seq[[1]]$sttime[1], '%H:%M')`: *Fin Chaser* depart Talbot St Pier, transit to **`r survey_seq[[1]]$end[1]`**
+    -   <font size= "5"> **`r stations[stations$station == survey_seq[[1]]$end[1],]$lat_dm`, `r stations[stations$station == survey_seq[[1]]$end[1],]$lon_dm`** </font>
+-   `r format(survey_seq[[1]]$endtime[1], '%H:%M')`: Arrive `r survey_seq[[1]]$end[1]`.
+    -   Mate arranges gear for jigging.
+    -   Sci crew organizes MS-222 bucket
+    -   Environmental data recorded
+-   `r format(survey_seq[[1]]$endtime[1] + 5*60, '%H:%M')`: Mate begins jigging.
+-   `r format(survey_seq[[1]]$jig[1] - 5*60, '%H:%M')` Mate ends jigging.
+:::
+
+::: {.column width="50%"}
+-   `r format(survey_seq[[1]]$jig[1], '%H:%M')`: Survey crew begins drop survey.
+-   `r format(survey_seq[[1]]$drop[1], '%H:%M')`: Drop survey ends. Transit to **`r survey_seq[[1]]$end[2]`**.
+    -   <font size= "5"> **`r stations[stations$station == survey_seq[[1]]$end[2],]$lat_dm`, `r stations[stations$station == survey_seq[[1]]$end[2],]$lon_dm`** </font>
+-   `r format(survey_seq[[1]]$endtime[2], '%H:%M')`: Arrive `r survey_seq[[1]]$end[2]`. Prep as before.
+-   `r format(survey_seq[[1]]$endtime[2] + 5*60, '%H:%M')`: Mate begins jigging.
+-   `r format(survey_seq[[1]]$jig[2] - 5*60, '%H:%M')`: Mate ends jigging.
+-   `r format(survey_seq[[1]]$jig[2], '%H:%M')`: Survey crew begins drop survey
+-   `r format(survey_seq[[1]]$drop[2], '%H:%M')`: Drop survey ends. Return to Talbot St Pier.
+-   `r format(survey_seq[[1]]$endtime[3], '%H:%M')`: Arrive Talbot St Pier. Unload gear.
+:::
+:::
+
+### `r format(as.POSIXct(params$start$d2), '%d %B')`
+
+::: columns
+::: {.column width="50%"}
+-   `r format(survey_seq[[2]]$sttime[1] - 30 * 60, '%H:%M')`: DHS, KS, TS, DW meet at Talbot St Pier, load gear onto *F/V Fin Chaser*
+-   `r format(survey_seq[[2]]$sttime[1], '%H:%M')`: *Fin Chaser* depart Talbot St Pier, transit to **`r survey_seq[[2]]$end[1]`**
+    -   <font size= "5"> **`r stations[stations$station == survey_seq[[2]]$end[1],]$lat_dm`, `r stations[stations$station == survey_seq[[2]]$end[1],]$lon_dm`** </font>
+-   `r format(survey_seq[[2]]$endtime[1], '%H:%M')`: Arrive `r survey_seq[[2]]$end[1]`. Prep as previous day.
+-   `r format(survey_seq[[2]]$endtime[1] + 5*60, '%H:%M')`: Mate begins jigging.
+-   `r format(survey_seq[[2]]$jig[1] - 5*60, '%H:%M')`: Mate ends jigging.
+-   `r format(survey_seq[[2]]$jig[1], '%H:%M')`: Survey crew begins drop survey
+:::
+
+::: {.column width="50%"}
+-   `r format(survey_seq[[2]]$drop[1], '%H:%M')`: Drop survey ends. Transit to **`r survey_seq[[2]]$end[2]`**
+    -   <font size= "5"> **`r stations[stations$station == survey_seq[[2]]$end[2],]$lat_dm`, `r stations[stations$station == survey_seq[[2]]$end[2],]$lon_dm`** </font>
+-   `r format(survey_seq[[2]]$endtime[2], '%H:%M')`: Arrive `r survey_seq[[2]]$end[2]`. Prep as previous site.
+-   `r format(survey_seq[[2]]$endtime[2] + 5*60, '%H:%M')`: Mate begins jigging.
+-   `r format(survey_seq[[2]]$jig[2] - 5*60, '%H:%M')` Mate ends jigging.
+-   `r format(survey_seq[[2]]$jig[2], '%H:%M')`: Survey crew begins drop survey.
+-   `r format(survey_seq[[2]]$drop[2], '%H:%M')`: Drop survey ends. Return to Talbot St Pier.
+-   `r format(survey_seq[[2]]$endtime[3], '%H:%M')`: Arrive Talbot St Pier. Unload gear.
+:::
+:::
+
+## Distances
+
+```{r}
+#| label: dist-matrix
+nm_matrix |>
+  as.numeric() |>
+  matrix(ncol = length(stations$station),
+         dimnames = list(stations$station, stations$station)) |>
+  knitr::kable('html', align = 'c', caption = 'Distance, nautical miles')
+
+time_matrix_pretty |>
+  matrix(ncol = length(stations$station),
+         dimnames = list(stations$station, stations$station)) |> 
+  knitr::kable('html', align = 'c', caption = paste('Distance, time at', 
+                                                    params$vessel_sp_kts,
+                                                    'kts')
+  )
+```
