@@ -27,6 +27,310 @@ gpx_ext_fix <- function(x){
   conts
 }
 
+load_tracks <- function(cruise_id, survey_type){
+  lapply(
+    list.files(
+      paste('embargo/gps',
+            cruise_id,
+            'raw',
+            survey_type,
+            sep = '/'),
+      full.names = T, pattern = '^Track.*gpx'),
+    st_read,
+    layer = 'tracks', quiet = T) |>
+    bind_rows() |>
+    
+    # pull out "fit" information
+    rowwise() |>
+    mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+           gpx_ext_fix(gpxx_TrackExtension)) |> 
+    select_at(vars(-starts_with('gpx')))
+}
+
+load_points <- function(cruise_id, survey_type){
+  lapply(
+    list.files(
+      paste('embargo/gps',
+            cruise_id,
+            'raw',
+            survey_type,
+            sep = '/'),
+      pattern = '^Waypoints.*gpx', full.names = T),
+    read_sf,
+    layer = 'waypoints'
+  ) |> 
+    bind_rows()
+}
+
+# 2307 pot cruise ----
+tracks <- load_tracks(2307, 'pot')
+pts <- load_points(2307, 'pot')
+
+## Create key to rename waypoints
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = '',
+#                      fid = row.names(pts)),
+#           'embargo/gps/2307/repaired/pot/key_pot_2307.csv',
+#           row.names = FALSE, na = '')
+
+## Open up the created file and edit by hand
+library(mapview)
+mapview(pts)
+
+pt_key <- read.csv('embargo/gps/2307/repaired/pot/key_pot_2307.csv',
+                   na.strings = '') |> 
+  mutate(original_name = as.character(original_name))
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new'))) |> 
+  select(-fid)
+
+st_write(pts, 'embargo/gps/2307/repaired/pot/waypoints_repaired_20230724.gpx',
+         delete_dsn = T)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(11, deploy_sites)
+
+recover_sites <- pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times
+deploy_times <- pts |> 
+  filter(grepl('[BR]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- pts |> 
+  filter(grepl('[BR]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
+# 2306-2 pot cruise ----
+tracks <- load_tracks('2306_2', 'pot')
+pts <- load_points('2306_2', 'pot')
+
+## Create key to rename waypoints
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = '',
+#                      fid = row.names(pts)),
+#           'embargo/gps/2306_2/repaired/pot/key_pot_2306_2.csv',
+#           row.names = FALSE, na = '')
+
+## Open up the created file and edit by hand
+# library(mapview)
+# mapview(pts)
+
+
+pt_key <- read.csv('embargo/gps/2306_2/repaired/pot/key_pot_2306_2.csv',
+                   na.strings = '') 
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new'))) |> 
+  select(-fid)
+
+st_write(pts, 'embargo/gps/2306_2/repaired/pot/waypoints_repaired_20230626.gpx',
+         delete_dsn = T)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(11, deploy_sites)
+
+recover_sites <- pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(22, recover_sites)
+
+## Update times
+deploy_times <- pts |> 
+  filter(grepl('[BR]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- pts |> 
+  filter(grepl('[BR]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time[c(1, 3:7)])
+
+
+# 2208 rec cruise ----
+tracks <- lapply(
+  list.files('embargo/gps/2306/raw/rec', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('embargo/gps/2306/raw/rec', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = ''),
+#           'embargo/gps/2306/repaired/rec/_key_rec_2306.csv',
+#           row.names = FALSE, na = '')
+# mapview::mapview(pts) + mapview::mapview(tracks)
+
+pt_key <- read.csv('embargo/gps/2306/repaired/rec/key_rec_2306.csv',
+                   na.strings = '')
+
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new')))
+
+st_write(pts, 'embargo/gps/2306/repaired/rec/waypoints_repaired_20230626.gpx',
+         delete_dsn = T)
+
+
+
+## update raw data gdrive spreadsheet
+track_points <- lapply(
+  list.files('embargo/gps/2306/raw/rec', full.names = T, pattern = '^Track.*gpx'), 
+  st_read,
+  layer = 'track_points',
+  quiet = T
+)
+concat_coords_rec <- function(.) {
+  hold <- st_coordinates(
+    track_points[[.]][c(1, nrow(track_points[[.]])),]
+    )
+  writeClipboard(rep(paste(c(hold[1,],'','','', hold[2,]), collapse = ','),
+                     times = 3))
+}
+
+
+# 2306 pot cruise ----
+tracks <- lapply(
+  list.files('embargo/gps/2306/raw/pot', full.names = T, pattern = '^Track.*gpx'),
+  st_read,
+  layer = 'tracks', quiet = T) |>
+  bind_rows() |>
+  
+  # pull out "fit" information
+  rowwise() |>
+  mutate(gpx_ext_fix(gpxtrkx_TrackStatsExtension),
+         gpx_ext_fix(gpxx_TrackExtension)) |> 
+  select_at(vars(-starts_with('gpx')))
+
+
+pts <- lapply(
+  list.files('embargo/gps/2306/raw/pot', pattern = '^Waypoints.*gpx', full.names = T),
+  read_sf,
+  layer = 'waypoints'
+) |> 
+  bind_rows()
+
+## Create key to rename waypoints
+# write.csv(data.frame(original_name = pts$name,
+#                      new_name = '',
+#                      original_cmt = pts$cmt,
+#                      new_cmt = '',
+#                      fid = row.names(pts)),
+#           'embargo/gps/2306/repaired/pot/key_pot_2306.csv',
+#           row.names = FALSE, na = '')
+
+pt_key <- read.csv('embargo/gps/2306/repaired/pot/key_pot_2306.csv',
+                   na.strings = '') 
+pts <- pts |> 
+  left_join(pt_key, by = c('name' = 'original_name', 'cmt' = 'original_cmt'))|> 
+  mutate(name = new_name,
+         cmt = new_cmt) |> 
+  select_at(vars(-starts_with('new'))) |> 
+  select(-fid)
+
+st_write(pts, 'embargo/gps/2306/repaired/pot/waypoints_repaired_20230605.gpx',
+         delete_dsn = T)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(1, deploy_sites)
+
+recover_sites <- pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times
+deploy_times <- pts |> 
+  filter(grepl('[BR]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- pts |> 
+  filter(grepl('[BR]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time[c(1:2, 4:7)])
+
+
 # 2305 pot cruise ----
 tracks <- lapply(
   list.files('embargo/gps/2305/raw/pot', full.names = T, pattern = '^Track.*gpx'),
