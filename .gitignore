@@ -2,23 +2,21 @@
 .Rhistory
 .RData
 .Ruserdata
-
 # Images
 *.jpg
-
-
 # Other
 *.html
 *.pdf
-
 # Shapefiles
 *.shp
 *.prj
 *.dbf
 *.cpg
 *.shx
-
 # Embargoed data
 EMBARGO/
-
 /.quarto/
+Cruises/Plans/Compiled
+Cruises/Reports/Compiled
+
+Proposal/
