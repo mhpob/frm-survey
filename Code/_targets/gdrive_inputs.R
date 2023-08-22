@@ -3,7 +3,9 @@ find_gdrive_cue <- function(data_source){
   id <- switch(data_source,
                rec = '1OsvJwdYRc8Wf9Z-nkF4t3SCQQ89CEWe9a1CCtPRMp7w',
                pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM',
-               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx')
+               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx',
+               rec_castaway = '1_Y_VmelDBG0KY9F9ECMibPNCglaAp-2a',
+               pot_castaway = '1n4Ed7XE8K9e9Nyiuk4jVrzv3JCQUznQp')
   
   if(Sys.info()['nodename'] == 'acadnet-delphinus'){
     googledrive::drive_auth(token = readRDS(".secrets/MOBtoken"))
@@ -45,7 +47,18 @@ find_gdrive_cue <- function(data_source){
     
     cue <- all(gdrive_hobo$name %in% local_hobo)
   }
-
+  
+  if(grepl('castaway', data_source)){
+    gdrive_castaway <- drive_ls(as_id(id))
+    local_castaway <- list.files(
+      paste0('data/castaway',
+             gsub('_.*', '', data_source)
+      )
+    )
+    
+    cue <- all(gdrive_castaway$name %in% local_castaway)
+  }
+  
   cue
 }
 
@@ -56,7 +69,9 @@ gdrive_download <- function(data_source){
   id <- switch(data_source,
                rec = '1OsvJwdYRc8Wf9Z-nkF4t3SCQQ89CEWe9a1CCtPRMp7w',
                pot = '1I3zFvMrVjOnMxZ21BSTRVqW7hKbt1qOpDARenosknUM',
-               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx')
+               hobo = '1-DOmuSt-ErQeD2H463dFWV5KvtaClHNx',
+               rec_castaway = '1_Y_VmelDBG0KY9F9ECMibPNCglaAp-2a',
+               pot_castaway = '1n4Ed7XE8K9e9Nyiuk4jVrzv3JCQUznQp')
   
   drive_auth(email = 'obrien@umces.edu')
   
@@ -88,6 +103,33 @@ gdrive_download <- function(data_source){
     }
     
     list.files('data/hobo', full.names = T)
+  }
+  
+  if(grepl('castaway', data_source)){
+    gdrive_castaway <- drive_ls(as_id(id))
+    local_castaway <- list.files(
+      paste(
+        'data/castaway',
+        gsub('_.*', '', data_source),
+        sep = '/'
+      )
+    )
+    
+    to_download <- gdrive_castaway[!gdrive_castaway$name %in% local_castaway,]
+    
+    for(i in 1:nrow(to_download)){
+      drive_download(
+        as_id(to_download$id[i]),
+        paste(
+          'data/castaway',
+          gsub('_.*', '', data_source),
+          to_download$name[i],
+          sep = '/'
+        )
+      )
+    }
+    
+    list.files('data/castaway', full.names = T, recursive = T)
   }
 
 }

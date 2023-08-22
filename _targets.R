@@ -25,10 +25,10 @@ rm(file)
 # Replace the target list below with your own:
 list(
   
-  # read in rec survey, pot survey, or HOBO data from Google Drive
+  # read in rec survey, pot survey, HOBO, or Castaway data from Google Drive
   # https://github.com/ropensci/tarchetypes/discussions/28
   tar_map(
-    list(data_source = c('rec', 'pot', 'hobo')),
+    list(data_source = c('rec', 'pot', 'hobo', 'rec_castaway', 'pot_castaway')),
     
     # Cues will always appear outdated so that they check every time
     # We want the cue to be T if we want to skip it, F if we want to run it
@@ -37,9 +37,10 @@ list(
                cue = tar_cue('always')),
     
     # After checking, pot/rec downloads will be cancelled if the target
-    #   metadata is older than the last time the sheet was edited. HOBO
-    #   downloads will be cancelled if the file names in data/hobo/ match those
-    #   in the USW/FRM/pot/raw data/HOBO shared drive folder
+    #   metadata is older than the last time the sheet was edited. HOBO and Castaway
+    #   downloads will be cancelled if the file names in data/hobo/ or data/castaway
+    #   match those in the USW/FRM/pot/raw data/HOBO or /pot/raw data/castaway or
+    #   /rec/raw data/castaway shared drive folders
     tar_skip(raw_data,
              gdrive_download(data_source),
              skip = gdrive_cue,
