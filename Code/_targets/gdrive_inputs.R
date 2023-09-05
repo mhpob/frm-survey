@@ -51,8 +51,9 @@ find_gdrive_cue <- function(data_source){
   if(grepl('castaway', data_source)){
     gdrive_castaway <- drive_ls(as_id(id))
     local_castaway <- list.files(
-      paste0('data/castaway',
-             gsub('_.*', '', data_source)
+      paste('data/castaway',
+             gsub('_.*', '', data_source),
+             sep = '/'
       )
     )
     
@@ -129,7 +130,8 @@ gdrive_download <- function(data_source){
       )
     }
     
-    list.files('data/castaway', full.names = T, recursive = T)
+    list.files(paste0('data/castaway/', gsub('_.*', '', data_source)),
+               full.names = T)
   }
 
 }
