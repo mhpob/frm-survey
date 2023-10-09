@@ -49,7 +49,7 @@ find_gdrive_cue <- function(data_source){
   }
   
   if(grepl('castaway', data_source)){
-    gdrive_castaway <- drive_ls(as_id(id))
+    gdrive_castaway <- drive_ls(as_id(id), type = 'csv', recursive = T)
     local_castaway <- list.files(
       paste('data/castaway',
              gsub('_.*', '', data_source),
@@ -133,5 +133,16 @@ gdrive_download <- function(data_source){
     list.files(paste0('data/castaway/', gsub('_.*', '', data_source)),
                full.names = T)
   }
-
+  
+  ### GPS files
+  ## Need to create the following directory structure:
+  # |-- EMBARGO
+  #   |-- GPS
+  #     |-- YYMM <-new for each month
+  #       |-- RAW
+  #         |-- pot
+  #         |-- rec
+  #       |-- repaired
+  #         |-- pot
+  #         |-- rec
 }
