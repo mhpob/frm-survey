@@ -7,7 +7,7 @@ library(future)
 tar_option_set(
   # packages that your targets need to run
   packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr',
-               'xml2'), 
+               'xml2', 'units', 'data.table'), 
   # default storage format
   format = "feather" 
   # Set other options as needed.
@@ -53,9 +53,15 @@ list(
              hobo_clean(
                tar_read(raw_data_hobo),
                tar_read(raw_data_pot)
-             ),
+             )
   ),
-
+  
+  tar_target(castaway,
+             castaway_clean(
+               tar_read(raw_data_rec_castaway),
+               tar_read(raw_data_pot_castaway)
+             )
+  ),
   # # GPS inputs
   # tar_files_input(gps_dirs,
   #                 grep(
