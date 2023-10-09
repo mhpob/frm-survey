@@ -1,5 +1,5 @@
 ---
-title: "Cruise Report: 2023-06-26 : 06-28"
+title: "Cruise Report: 2023-07-24 : 07-26"
 subtitle: "Pot survey"
 author: "Mike O'Brien (UMCES)"
 format:
@@ -9,8 +9,8 @@ echo: false
 warning: false
 editor: visual
 params:
-  st_date: '2023-06-26'
-  end_date: '2023-06-28'
+  st_date: '2023-07-24'
+  end_date: '2023-07-26'
 ---
 
 ```{r}
@@ -25,8 +25,7 @@ library(readxl); library(ggplot2); library(plotly); library(gt)
 ```{r}
 #| label: parameters
 
-# cruise_id <- gsub('20|-|\\d{2}$', '', params$end_date)
-cruise_id <- '2306_2'
+cruise_id <- gsub('20|-|\\d{2}$', '', params$end_date)
 
 ```
 
@@ -187,18 +186,16 @@ stations <- read_excel('embargo/pot_data/pot survey recorded data.xlsx',
 
 ## General notes
 
-Three release cages were used in this survey: sites C2306_2-2, N11, and L10, respectively.
+Release cages were used at all sites in this survey.
 
 ## Participants
 
--   Dave Secor (UMCES)
--   Kirsten Silva (UMCES)
--   Evan Kostelecky
+-   Mike O'Brien (UMCES)
+-   Evan Kostelecky (UMCES)
 -   Capt. Brendan Harrington (*F/V Integrity*)
--   Reilly (*F/V Integrity* mate, 27 June)
--   Connor (*F/V Integrity* mate, 28 June)
+-   Ethan N (*F/V Integrity* mate)
 
-## Pot deployment cruise, 2023-06-27
+## Pot deployment cruise, 2023-07-25
 
 ```{r}
 st_end_time <- function(ind){
@@ -208,74 +205,75 @@ st_end_time <- function(ind){
 
 ### Overall
 
--   03:00 Meet at *F/V Integrity*, prepare for departure.
--   03:30 Depart dock, transit to **C2306_2-1** (control site).
--   06:04 Arrive at **C2306_2-1**.
+-   02:30 Meet at *F/V Integrity*, prepare for departure.
+-   02:49 Depart dock, transit to **C2307-1** (control site).
+-   04:55 Arrive at **C2307-1**. BH begins rigging pots.
+    -   05:26 Begin deploying pots.
+    -   05:29 Finish deploying pots, transit to **J11** (experimental turbine site).
+-   06:06 Arrive at **J11**.
     -   06:06 Begin deploying pots.
-    -   06:10 Finish deploying pots, transit to **C2306_2-2** (control site).
--   06:53 Arrive at **C2306_2-2**.
-    -   06:57 Begin deploying pots; release cage E36D included.
-    -   07:01 Finish deploying pots, transit to **O11** (experimental turbine site).
--   07:47 Arrive at **O11**.
-    -   07:48 Begin deploying pots.
-    -   07:52 Finish deploying pots, transit to **N11**.
--   08:00 Arrive at **N11**.
-    -   08:02 Begin deploying pots; release cage E335 included.
-    -   08:06 Finish deploying pots. Transit to **RTWB**.
--   08:16 Arrive at **RTWB**.
-    -   Take pictures and video. Transit to **L10** (experimental turbine site).
--   08:25 Arrive at **L10**.
-    -   08:27 Begin deploying pots; release cage BCB included.
-    -   08:31 Finish deploying pots, transit to **K08** (experimental turbine site).
--   08:49 Arrive at **K08**.
-    -   08:51 Begin deploying pots.
-    -   08:55 Finish deploying pots. Return to West Ocean City, MD.
--   c12:30 Arrive in West Ocean City, MD.
+    -   06:09 Finish deploying pots, transit to **N12** (experimental turbine site).
+-   06:34 Arrive at **N12**.
+    -   6:34 Begin deploying pots.
+    -   6:34 Finish deploying pots, transit to **C2307-2** (control site).
+-   07:01 Arrive at **C2307-2**.
+    -   07:01 Begin deploying pots.
+    -   07:03 Finish deploying pots. Transit to **K08** (experimental turbine site).
+-   08:02 Arrive at **K08**.
+    -   08:02 Begin deploying pots; release cage BCB included.
+    -   08:03 Finish deploying pots, transit to **J07** (experimental turbine site).
+-   08:15 Arrive at **J07**.
+    -   08:15 Begin deploying pots.
+    -   08:17 Finish deploying pots. Return to West Ocean City, MD.
+-   10:36 Arrive in West Ocean City, MD.
 
 ### Description
 
 #### Survey deployment
 
-Capt. Brendan Harrington and mates retrieved the pots from the Maryland Coastal Bays program and stacked the pots on the boat.
+Capt. Brendan Harrington and mates retrieved the pots from the Maryland Coastal Bays program and stacked the pots on the boat untied. Capt. Harrington used the period of transit between sites to tie the next string of pots on. Buoys were not removed from the release cage at site C2307-1. As a result, the rig was recovered using the redundant buoy system
 
-Wind speed was10-15 knots, coming from the N. Waves were 3-5 ft. Cloud cover was 60-80% of the sky. Surface temperature as reported by the satellite chart plotter was 70-72 F. Control sites ranged in depth from 93-133 ft, with turbine sites ranging from 87-116 ft.
+Wind speed was negligible and sea state was predominantly long-period 3 ft rollers. Cloud cover was 10% of the sky. Surface temperature as reported by the satellite chart plotter was 77-78 F. Control sites ranged in depth from 92-136 ft, with turbine sites ranging from 93-116 ft.
 
-[Onset HOBO temperature loggers](https://www.onsetcomp.com/products/data-loggers/mx2201) were attached to the ropeless cages and deployed at a control (C2306_2-2) and turbine (K08) site to log bottom temperature at 10 minute intervals during deployment.
+[Onset HOBO temperature loggers](https://www.onsetcomp.com/products/data-loggers/mx2201) were attached to the ropeless cages and deployed at a control (C2307-2) and turbine (K08) site to log bottom temperature at 10 minute intervals during deployment.
 
-## Pot recovery cruise, 2023-06-28
+## Pot recovery cruise, 2023-07-26
 
 ### Overall
 
 -   02:30 Meet at *F/V Integrity*, prepare for departure.
--   c02:50 Depart dock, transit to **C2306_2-1**.
--   05:14 Arrive at **C2306_2-1**.
-    -   05:20 Near block recovered.
-    -   05:30 Far block recovered; pot recovery complete. Transit to **C2306_2-2**.
--   06:24 Arrive **C2306_2-2**. Begin pot recovery approach.
-    -   06:24 Near block recovered.
-    -   06:36 Far block (release cage) recovered; pot recovery complete. Transit to **O11**.
--   07:22 Arrive **O11**. Begin pot recovery approach.
-    -   07:22 Near block recovered.
-    -   07:30 Far block recovered; pot recovery complete. Transit to **N11**.
--   07:44 Arrive **N11**. Begin pot recovery approach.
-    -   07:52 Near block recovered.
-    -   08:02 Far block (release cage) recovered; pot recovery complete. Transit to **L10**.
--   08:55 Arrive **L10**. Begin pot recovery approach.
-    -   08:57 Near block recovered.
-    -   09:06 Far block (release cage) recovered; pot recovery complete. Transit to **K08**.
--   09:25 Arrive **K08**. Begin pot recovery approach.
-    -   09:28 Near block recovered.
-    -   09:36 Far block recovered; pot recovery complete.
--   09:36 End survey, return to West Ocean City, MD.
--   12:30 Arrive in West Ocean City, MD.
+-   02:40 Depart dock, transit to **C2307-1**.
+-   04:53 Arrive at **C2307-1**.
+    -   04:53 Near block recovered.
+    -   05:02 Release cage (far); pot recovery complete. Transit to **J11**.
+-   05:40 Arrive **J11**. Signal release cage.
+    -   05:43 Release cage recovered.
+    -   05:51 near block recovered; pot recovery complete. Transit to **N12**.
+-   06:23 Arrive **N12**. Begin pot recovery approach.
+    -   06:25 Release cage buoys recovered.
+    -   06:26 Release cage recovered.
+    -   06:36 Near block recovered; pot recovery complete. Transit to **C2307-2**.
+-   07:16 Arrive **C2307-2**. Begin pot recovery approach.
+    -   07:19 Release cage buoys recovered.
+    -   07:21 Release cage recovered.
+    -   07:27 Near block recovered; pot recovery complete. Transit to **K08**.
+-   08:20 Arrive **K08**. Begin pot recovery approach.
+    -   08:38 Release cage recovered.
+    -   08:45 Near block recovered; pot recovery complete. Transit to **J07**.
+-   09:04 Arrive **J07**. Begin pot recovery approach.
+    -   09:05 Release cage buoys recovered.
+    -   09:07 Release cage recovered.
+    -   09:15 Near block recovered; pot recovery complete.
+-   09:15 End survey, return to West Ocean City, MD.
+-   11:30 Arrive in West Ocean City, MD.
 
 ### Description {#pot-recovery-description}
 
-Wind speed was 10 knots from the N as reported by Capt. Harrington. Waves were 3 feet. Cloud cover was 30% of the sky, decreasing to 10% at the end of the survey. Surface temperature as reported by the satellite chart plotter was 71-72 F.
+Wind speed was light, less than 5 kts from the west. Waves were choppier than the previous day but still calm at 1-2 ft. Sky was clear of clouds. Surface temperature as reported by the satellite chart plotter was 77-78 F.
 
-HOBO temperature loggers were successfully recovered from the rigs at C2306_2-2 and K08.
+HOBO temperature loggers were successfully recovered from the rigs at C2307-2 and K08.
 
-Dominant species were black sea bass (`r filter(cpue_tally, species == 'black sea bass')$n`) and Jonah crab (`r filter(cpue_tally, species == 'jonah crab')$n`). `r filter(cpue_tally, is.na(species))$n` of the `r n_pots` recovered pots were empty.
+Dominant species were black sea bass (`r filter(cpue_tally, species == 'black sea bass')$n`) and rock crab (`r filter(cpue_tally, species == 'rock crab')$n`). `r filter(cpue_tally, is.na(species))$n` of the `r n_pots` recovered pots were empty.
 
 There was a significant difference in black sea bass catch between near and far sections of the lines (Poisson GLM, $p <$ 0.05), but no difference between turbine and control sites (Poisson GLM, $p >$ 0.05).
 
@@ -301,7 +299,7 @@ summary(
 
 Total length (mm) and weight (g) of all black sea bass were recorded. Total lengths of other fish species were also recorded. Black sea bass ranged in total length from `r min(measures_subset$tl_mm, na.rm = T)` - `r max(measures_subset$tl_mm, na.rm = T)` mm, with a mean of `r floor(mean(measures_subset$tl_mm, na.rm = T))` mm (minimum legal size 320 mm). Weights ranged from `r min(measures_subset$wt_g, na.rm = T)` - `r max(measures_subset$wt_g, na.rm = T)` g, mean of `r floor(mean(measures_subset$wt_g, na.rm = T))` g.
 
-Black sea bass were significantly larger and heavier in the far pots as compared to near and turbine sites as compared to control sited (ANOVA, all $p <$ 0.05).
+Black sea bass were similar in length and weight in the far pots as compared to near and turbine sites as compared to control sites (ANOVA, all $p >$ 0.05).
 
 ```{r}
 #| echo: false
@@ -418,7 +416,7 @@ bsb_cpue |>
   
 ```
 
-#### Late-June 2023 catch
+#### July 2023 catch
 
 The blank bars on the right show the count of pots with no catch.
 
