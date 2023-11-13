@@ -83,3 +83,34 @@ add_control_area <- function(boem_weas){
   'data/geo/frm_control.gpkg'
   
 }
+
+
+wtg_update_202211 <- function(update_202211, turbines){
+  # library(pdftools)
+  old_turbines <- st_read(
+    turbines,
+    layer = 'WTG_Layout_2022_0111', quiet = TRUE
+    )
+
+  txt <- pdf_text(update_202211)
+  
+  locations <- lapply(txt, fread) |>
+    lapply(function(.) .[, 1:5]) |> 
+    lapply(function(.) .[complete.cases(.)]) |> 
+    rbindlist(use.names = FALSE)
+  
+  setnames(locations,
+           c('name', 'former_name', 'easting', 'northing', 'depth'))
+  
+  locations <- merge(locations, old_turbines,
+                     by.x = 'former_name', by.y = 'ID',
+                     suffixes = c('.202211'))
+  
+  st_write(locations,
+           'data/geo/wtg_locations_202211.gpkg',
+           delete_layer = TRUE)
+  
+  'data/geo/wtg_locations_202211.gpkg'
+}
+
+

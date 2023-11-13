@@ -7,7 +7,7 @@ library(future)
 tar_option_set(
   # packages that your targets need to run
   packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr',
-               'xml2', 'units', 'data.table'), 
+               'xml2', 'units', 'data.table', 'pdftools'), 
   # default storage format
   format = "feather" 
   # Set other options as needed.
@@ -101,6 +101,10 @@ list(
     'data/geo/boemwindlayers_4download.gpkg'
   ),
   
+  tar_file(update_202211,
+           'data/geo/app-i-f-wtg-oss-locations.pdf'
+  ),
+  
   tar_file(
     usw_buildout,
     add_buildout_zones(boem_weas)
@@ -111,6 +115,10 @@ list(
     add_control_area(boem_weas)
   ),
   
+  tar_file(
+    usw_locations_202211,
+    wtg_update_202211(update_202211, usw_locations)
+  ),
   
   tar_quarto(point_process, "reports/point_process.qmd",
              cue = tar_cue('never'))
