@@ -107,7 +107,7 @@ gdrive_download <- function(data_source){
   }
   
   if(grepl('castaway', data_source)){
-    gdrive_castaway <- drive_ls(as_id(id))
+    gdrive_castaway <- drive_ls(as_id(id), type = 'csv', recursive = T)
     local_castaway <- list.files(
       paste(
         'data/castaway',
