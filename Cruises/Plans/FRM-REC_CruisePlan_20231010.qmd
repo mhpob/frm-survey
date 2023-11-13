@@ -7,11 +7,11 @@ echo: false
 message: false
 warning: false
 params:
-  seed: 20230906
+  seed: 20231010
   vessel_sp_kts: 12
   start:
     value: 
-      d1: '2023-10-11 06:00'
+      d1: '2023-10-11 05:15'
   buoys: FALSE
 ---
 
@@ -271,8 +271,6 @@ for(i in 1){
 🔲 GPS
 
 🔲 Stopwatch
-
-🔲 Castaway CTD
 :::
 
 ::: {.column width="33%"}
@@ -367,14 +365,14 @@ Times calculated at `r params$vessel_sp_kts` knots.
 
 ::: columns
 ::: {.column width="50%"}
--   `r format(survey_seq[[1]]$sttime[1] - 30 * 60, '%H:%M')`: DHS, KS, DW meet at Talbot St Pier, load gear onto *F/V Fin Chaser*
+-   `r format(survey_seq[[1]]$sttime[1] - 30 * 60, '%H:%M')`: EK, KS, TC meet at Talbot St Pier, load gear onto *F/V Fin Chaser*
 -   `r format(survey_seq[[1]]$sttime[1], '%H:%M')`: *Fin Chaser* depart Talbot St Pier, transit to **`r survey_seq[[1]]$end[1]`**
     -   <font size= "5"> **`r stations[stations$station == survey_seq[[1]]$end[1],]$lat_dm`, `r stations[stations$station == survey_seq[[1]]$end[1],]$lon_dm`** </font>
 -   `r format(survey_seq[[1]]$endtime[1], '%H:%M')`: Arrive `r survey_seq[[1]]$end[1]`.
     -   Mate arranges gear for jigging.
-    -   Sci crew organizes CTD and MS-222 bucket
+    -   Sci crew organizes MS-222 bucket
     -   Environmental data recorded
--   `r format(survey_seq[[1]]$endtime[1] + 5*60, '%H:%M')`: Mate begins jigging. Scientific crew deploys CTD.
+-   `r format(survey_seq[[1]]$endtime[1] + 5*60, '%H:%M')`: Mate begins jigging.
 -   `r format(survey_seq[[1]]$jig[1] - 5*60, '%H:%M')` Mate ends jigging.
 -   `r format(survey_seq[[1]]$jig[1], '%H:%M')`: Survey crew begins drop survey.
 :::
