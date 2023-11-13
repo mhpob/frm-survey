@@ -1,0 +1,12 @@
+site,latitude,longitude,depth,type_name,vr2ar,rockhopper,fpod
+T-1M,38.3,-74.95,20,FP-AR,T,,T
+A-1M,38.44,-74.81,23,,,,
+A-2M,38.38,-74.81,24,,,,
+A-3M,38.31,-74.81,21,RH-FP-AR,T,T,T
+A-4M,38.41,-74.72,30,,,,
+A-5M,38.34,-74.72,29,,,,
+A-6M,38.28,-74.72,29,RH-FP-AR,T,T,T
+A-7M,38.3,-74.65,35,RH-FP-AR,T,T,T
+T-2M,38.3,-74.51,37,FP-AR,T,,T
+T-3M,38.34,-74.4,42,FP-AR,T,,T
+AMAR,38.3,-74.76,26,,,,
