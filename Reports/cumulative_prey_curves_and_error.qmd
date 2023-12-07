@@ -1,0 +1,522 @@
+---
+title: "Cumulative prey curves and error"
+author: "Mike O'Brien"
+format:
+  html:
+    self-contained: true
+    code-fold: true
+---
+
+# Creating data for the cumulative prey curve
+
+Start by importing the packages needed for our analyses...
+
+```{r}
+library(dplyr) # package for data manipulation
+library(ggplot2) # package for plotting
+theme_set(theme_minimal()) # Minimal plotting background
+```
+
+then import the diet data...
+
+```{r}
+bsb_diet <- read.csv(
+  'data/Black Sea Bass Analysis - 2023.csv',
+  na.strings = '' 
+)
+head(bsb_diet)
+```
+
+And select the pot survey data from April to use as an example along with some light data manipulation.
+
+```{r}
+bsb_month <- bsb_diet |> 
+  filter(Survey == 'pot') |> 
+  mutate(
+    Date_Diss = as.Date(Date_Diss, format = '%m-%d-%y'),
+    new_taxa = FALSE
+  ) |> 
+  arrange(Date_Diss) |> 
+  select(Fish_ID, Lowest_Classification, new_taxa, Date_Caught, Date_Diss) |> 
+  # use regular expressions (like ctrl+F)
+  # "Starts with '4'"
+  filter(
+    # "Does this value in the Date_Caught column START WITH ("^") the
+    # character "4"
+    grepl('^4', Date_Caught)
+  )
+
+head(bsb_month)
+```
+
+In order to make a cumulative prey curve (number of stomachs analyzed on the x axis and new taxa identified in that stomach on the y axis), we need to go stomach-by-stomach and see if any of the prey items we identified were in any of the previous stomachs we analyzed. The pertinent columns of data are:
+
+-   `Fish_ID`: a unique fish identifier. This column may contain repeated values if multiple prey items were identified in its stomach;
+-   `Lowest_Classification`: the lowest classification of identified prey items. The data are *de facto* driven by this column, as each prey item gets its own row;
+-   `Date_Diss`: the date that the fish noted in `Fish_ID` was dissected. The data are currently ordered by this column;
+-   `new_taxa`: a dummy column created in the previous step that currently contains only `FALSE` values;
+
+We want to update the `new_taxa` column, row by row, checking if we have already seen the prey item noted in `Lowest_Classification` in any of the previous rows. Because each data point relies on the previous data point in the series, we need to create something called a "for-loop".
+
+The first row does not depend on any of the other rows, so we treat it a little differently. If the stomach was empty, `Lowest_Classification` will be `NA`, and we want `new_taxa` to be `FALSE` (there were no new taxa added). If the stomach was not empty, `Lowest_Classification` will have some classification in it, and we want `new_taxa` to be `TRUE` (a new taxa was added in that first row).
+
+```{r}
+# Assign to bsb_month's first row of the "new_taxa" column...
+bsb_month[1, 'new_taxa'] <- 
+  ifelse(
+    # if bsb_month's first row of the "Lowest_Classification" column is NA
+    test = is.na(bsb_month[1, 'Lowest_Classification']),
+    # "FALSE" if, yes, it is NA
+    yes = FALSE,
+    # "TRUE" if, no, it is not NA
+    no = TRUE
+  )
+
+bsb_month[1, c('Lowest_Classification','new_taxa')]
+```
+
+Now we need to create the for-loop ("loop" for short). The first row is already taken care of above, so we will conduct the loop starting with the second row and go until the number of rows of the dataset. We will replace the given row's value of `new_taxa` with `FALSE` if the row's value of `Lowest_Classification` is in any of the previous rows' values of `Lowest_Classification` and replace it with `TRUE` if it is not. Then we move onto the next row and repeat until we get to the end of the data.
+
+```{r}
+for(row_num in 2:nrow(bsb_month)){
+  bsb_month[row_num, 'new_taxa'] <- 
+    !(bsb_month[row_num, 'Lowest_Classification'] %in% 
+        bsb_month[1:(row_num-1), 'Lowest_Classification'])
+}
+
+head(bsb_month)
+```
+
+Now we need to:
+
+1.  turn the `new_taxa` column into a number we can use, and
+2.  count how many stomachs we've analyzed at that point.
+
+Luckily, `TRUE` and `FALSE` have a value of `1` and `0`, respectively, so we can sum the `new_taxa` column. There are, however, sometimes multiple prey items per stomach, so we need to *group by* individual fish when we add up how many new taxa per stomach we see.
+
+```{r}
+bsb_summary <-
+  bsb_month |> 
+  # For each fish... (keeping Date_diss in there for ordering)
+  group_by(Date_Diss, Fish_ID) |> 
+  # Add the number of new taxa
+  summarize(new_taxa = sum(new_taxa)) |>
+  # Remove the grouping by Date_Diss
+  ungroup() |>
+  mutate(
+    # Note what number stomach it was. The n() function gives you the total
+    #   number of rows, so we can use a sequence from 1 to this number to indicate
+    #   the cumulative number of stomachs
+    n_stomachs = 1:n(),
+    # and take the cumulative sum of new taxa
+    new_taxa = cumsum(new_taxa)
+  )
+
+head(bsb_summary)
+```
+
+Let's make our catch curve:
+
+```{r}
+ggplot(data = bsb_summary,
+       aes(x = n_stomachs, y = new_taxa)) +
+  geom_step() +
+  geom_smooth()
+```
+
+Evan, you pointed out that the smooth *and* the confidence intervals here say that negative values of `new_taxa` are possible, which, of course, is ridiculous. This is because I cheated when plotting and used the default arguments of `ggplot2`'s `geom_smooth` function, which provides a smoothed line via LOESS. [LOESS](https://en.wikipedia.org/wiki/Local_regression) is basically just a fancy moving average.
+
+# Creating the cumulative prey curve
+
+When we think about what a cumulative prey curve looks like, we see rapid change early in the series which then levels off as the number of stomachs analyzed heads toward infinity. One way to characterize that is to say that the number of new taxa changes according to the logarithm of the number of stomachs analyzed. As a quick proof of concept, check out the difference in value between the logarithm (we'll use the natural logarithm, `log`, moving forward) of small values versus larger values:
+
+```{r}
+#| code-fold: false
+log(2) - log(1)
+
+log(15) - log(14)
+```
+
+So, on the natural log scale, an increase from 1 to 2 stomachs analyzed is comparatively larger than an increase from 14 to 15 stomachs analyzed. This is in line with the concept of a cumulative prey curve. Let's try that out by telling `geom_smooth` that we want a linear model (`'lm'`) where the `y` variable is a function of the natural log of the `x` variable: "`y ~ log(x)`. If we think all the way back to high school algebra, the equation of a line was defined as `y = mx + b`; typing `y ~ log(x)` is equivalent to saying `y = m*log(x) + b`.
+
+```{r}
+ggplot(data = bsb_summary,
+       aes(x = n_stomachs, y = new_taxa)) +
+  geom_step() +
+  geom_smooth(method = 'lm',
+              formula = y ~ log(x))
+```
+
+Wait... this is still wrong and still predicts negative taxa. Let's take a look at what fitting a linear model is actually doing:
+
+```{r}
+model1 <- lm(new_taxa ~ log(n_stomachs),
+          data = bsb_summary)
+
+summary(model1)
+```
+
+The important bit there is the information on the coefficients: it's fitting a slope (`log(n_stomachs)`) *and* an intercept (`(Intercept)`). As noted above, it's giving us both the `m` and the `b` in `y = m*log(x) + b`. We know that if we have analyzed zero stomachs, we should have zero new taxa. We can prevent `lm` from fitting an intercept by adding `0` to the equation in place of `b`: `y ~ log(x) + 0`.
+
+```{r}
+model2 <- lm(new_taxa ~ log(n_stomachs) + 0,
+          data = bsb_summary)
+
+summary(model2)
+```
+
+AHA! And what does that look like?
+
+```{r}
+ggplot(data = bsb_summary,
+       aes(x = n_stomachs, y = new_taxa)) +
+  geom_step() +
+  geom_smooth(method = 'lm',
+              formula = y ~ 0 + log(x))
+```
+
+Great! We're starting to pass the Evan Kostelecky sniff test.
+
+# Bootstrapping
+
+The prey curve we just made depends on the order in which the stomachs were analyzed. What if when we reached into the bag, we pulled out a different fish first? What if we pulled out a different fish than that? What if we started with a completely different site?
+
+The answer is: **we'd get a completely different curve every time**.
+
+If we're trying to figure out if we've sampled enough stomachs to get an idea of what the fish were eating in a different month, the order in which we analyzed a stomach or a site shouldn't matter. This is where [bootstrapping](https://en.wikipedia.org/wiki/Bootstrapping_(statistics)) comes in. In statistics, bootstrapping is the process of shuffling the data around, creating some statistic from the shuffled data, then repeating that process a really big number of times.
+
+In R, we can use the `sample` function to randomly draw from some sequence. Let's shuffle the rows of our data by randomly selecting their indices
+
+```{r}
+random_rows <- sample(
+  x = 1:nrow(bsb_month),
+  size = nrow(bsb_month)
+  )
+
+random_rows
+
+bsb_strap <- bsb_month[random_rows,]
+head(bsb_strap)
+```
+
+Okay, our data is shuffled. Now run the same loop process as above to calculate the new cumulative curve.
+
+```{r}
+bsb_strap[1, 'new_taxa'] <- 
+  ifelse(
+    test = is.na(bsb_strap[1, 'Lowest_Classification']),
+    yes = FALSE,
+    no = TRUE
+  )
+
+for(i in 2:nrow(bsb_strap)){
+  bsb_strap[i, 'new_taxa'] <- 
+    !(bsb_strap[i, 'Lowest_Classification'] %in% 
+        bsb_strap[1:(i-1), 'Lowest_Classification'])
+}
+
+bsb_summary_strap <- bsb_strap |> 
+  # For each fish... (keeping Date_diss in there for ordering)
+  group_by(Date_Diss, Fish_ID) |> 
+  # Add the number of new taxa
+  summarize(new_taxa = sum(new_taxa)) |>
+  ungroup() |> 
+  mutate(
+    # Note what number stomach it was
+    n_stomachs = 1:n(),
+    # and take the cumulative sum of new taxa
+    new_taxa = cumsum(new_taxa)
+  )
+
+ggplot(data = bsb_summary_strap, aes(x = n_stomachs, y = new_taxa)) +
+  geom_step() +
+  geom_smooth(method = 'lm',
+              formula = y ~ log(x) + 0)
+```
+
+Slightly different than before, right? Since we want to run this process a large number of times, it's helpful to put it into a function.
+
+```{r}
+bootstrap_function <- function(input_data){
+  random_indices <- sample(1:nrow(input_data), nrow(input_data))
+  data_strap <- input_data[random_indices,]
+  
+  
+  data_strap[1, 'new_taxa'] <- 
+    ifelse(
+      test = is.na(data_strap[1, 'Lowest_Classification']),
+      yes = FALSE,
+      no = TRUE
+    )
+  for(i in 2:nrow(data_strap)){
+    data_strap[i, 'new_taxa'] <- 
+      !(data_strap[i, 'Lowest_Classification'] %in% 
+          data_strap[1:(i-1), 'Lowest_Classification'])
+  }
+  data_plot <- data_strap |> 
+    # For each fish... (DROP Date_Diss!)
+    group_by(Fish_ID) |> 
+    # Add the number of new taxa
+    summarize(new_taxa = sum(new_taxa)) |>
+    ungroup() |> 
+    mutate(
+      # Note what number stomach it was
+      n_stomachs = 1:n(),
+      # and take the cumulative sum of new taxa
+      new_taxa = cumsum(new_taxa)
+    )
+  
+  return(data_plot)
+}
+```
+
+We can then use the `replicate` function to repeat this function some number of times. I'll just run it twice so we can look at what it does.
+
+```{r}
+replicate(
+  n = 2,
+  expr = bootstrap_function(bsb_month),
+  simplify = FALSE
+)
+```
+
+That's not quite right -- it seems that we're always drawing the same fish in order. Unfortunately, its a peculiarity of this data as each fish can have multiple rows. Because of this, we want to shuffle those rows together. To address this, we need to randomly sample the data by individual fish rather than row index, which makes things slightly more confusing. Feel free to skip over this.
+
+```{r}
+bootstrap_function <- function(input_data){
+  # Randomly sample UNIQUE fish (no repeats)
+  random_sample <- sample(unique(input_data$Fish_ID),
+                          length(unique(input_data$Fish_ID)))
+  
+  # Tell R that a new "random_fish" column that is the same as Fish_ID, except
+  #   ordered by the random sample we made above
+  data_strap <- input_data |> 
+    mutate(random_fish = factor(Fish_ID,
+                                levels = random_sample,
+                                ordered = T)
+    ) |> 
+    # Then order the data according to that sample
+    arrange(random_fish)
+  
+  # And proceed as usual
+  data_strap[1, 'new_taxa'] <- 
+    ifelse(
+      test = is.na(data_strap[1, 'Lowest_Classification']),
+      yes = FALSE,
+      no = TRUE
+    )
+  for(i in 2:nrow(data_strap)){
+    data_strap[i, 'new_taxa'] <- 
+      !(data_strap[i, 'Lowest_Classification'] %in% 
+          data_strap[1:(i-1), 'Lowest_Classification'])
+  }
+  
+  data_plot <- data_strap |> 
+    # For each fish... (DROP Date_Diss!)
+    group_by(random_fish) |>
+    summarize(new_taxa = sum(new_taxa)) |>
+    ungroup() |> 
+    mutate(
+      n_stomachs = 1:n(),
+      new_taxa = cumsum(new_taxa),
+      Fish_ID = as.character(random_fish)
+    ) |> 
+  select(Fish_ID, new_taxa, n_stomachs)
+  
+  return(data_plot)
+}
+```
+
+Check to see if the new function makes sense:
+
+```{r}
+replicate(
+  n = 2,
+  expr = bootstrap_function(bsb_month),
+  simplify = FALSE
+)
+```
+
+Seems like it! Let's do it a bunch of times and bind all of the results together according to the iteration. Take a quick peek at the first and last few rows:
+
+```{r}
+boot_result <- replicate(
+  n = 100,
+  expr = bootstrap_function(bsb_month),
+  simplify = FALSE
+) |> 
+  bind_rows(.id = 'iter')
+
+head(boot_result)
+tail(boot_result)
+```
+
+Visualizing the result, we can see the outcome of all of the different instances of resampling. The step-wise plots combine to turn into what looks like a grid, and all of the different linear model fits are shown in blue.
+
+```{r}
+ggplot(data = boot_result,
+       aes(x = n_stomachs, y = new_taxa, group = iter)) +
+  geom_step(alpha = 0.1) + 
+  geom_line(stat = 'smooth',
+            method = 'lm',
+            formula = y ~ 0 + log(x),
+            se = F,
+            alpha = 0.1)
+```
+
+How do we summarize this into some easy-to-report and easy-to-look-at statistic? One of the most-common ways we see is to create 95% confidence intervals. To do this, we're going to run our model on each bootstrapped dataset and report the coefficients.
+
+```{r}
+bootstrap_coefs <- function(input_data){
+  random_sample <- sample(unique(input_data$Fish_ID),
+                          length(unique(input_data$Fish_ID)))
+  
+  data_strap <- input_data |> 
+    mutate(random_fish = factor(Fish_ID,
+                                levels = random_sample,
+                                ordered = T)
+    ) |> 
+    arrange(random_fish)
+  
+  data_strap[1, 'new_taxa'] <- 
+    ifelse(
+      test = is.na(data_strap[1, 'Lowest_Classification']),
+      yes = FALSE,
+      no = TRUE
+    )
+  for(i in 2:nrow(data_strap)){
+    data_strap[i, 'new_taxa'] <- 
+      !(data_strap[i, 'Lowest_Classification'] %in% 
+          data_strap[1:(i-1), 'Lowest_Classification'])
+  }
+  
+  data_plot <- data_strap |> 
+    group_by(random_fish) |>
+    summarize(new_taxa = sum(new_taxa)) |>
+    ungroup() |> 
+    mutate(
+      n_stomachs = 1:n(),
+      new_taxa = cumsum(new_taxa),
+      Fish_ID = as.character(random_fish)
+    ) |> 
+  select(Fish_ID, new_taxa, n_stomachs)
+  
+  mod <- lm(new_taxa ~ log(n_stomachs) + 0, data = data_plot)
+  
+  coef(mod)
+}
+
+boot_coefs <- replicate(
+  n = 100,
+  expr = bootstrap_coefs(bsb_month),
+  simplify = FALSE
+) |> 
+  bind_rows(.id = 'iter')
+
+head(boot_coefs)
+```
+
+Now, we're going to take the middle 95% of these values. We can do this by finding what value represents the lowest 2.5% and the highest 97.5% using the `quantile` function. We also want the middle value for our overall line, which is the value at 50%.
+
+```{r}
+boot_cis <- boot_coefs |> 
+  reframe(quant = c(0.025, 0.5, 0.975),
+          log_sto = quantile(`log(n_stomachs)`, quant)
+  )
+
+boot_cis
+```
+
+We'll create some values to predict over and see what it looks like:
+
+```{r}
+n_sto_to_pred = seq(1,
+                    max(bsb_summary$n_stomachs),
+                    length.out = 100)
+
+boot95 <- data.frame(
+  n_stomachs = n_sto_to_pred,
+  pred =
+    boot_cis[boot_cis$quant == 0.5,]$log_sto *
+    log(
+      n_sto_to_pred
+    ),
+  
+  lci = boot_cis[boot_cis$quant == 0.025,]$log_sto *
+    log(
+      n_sto_to_pred
+    ),
+  
+  uci = boot_cis[boot_cis$quant == 0.975,]$log_sto *
+    log(
+      n_sto_to_pred
+    )
+) 
+ 
+
+ggplot(data = boot95, aes(x = n_stomachs)) +
+  geom_ribbon(aes(ymin = lci, ymax = uci), fill = 'lightgray') +
+  geom_line(aes(y = pred)) +
+  geom_point(data = bsb_summary, aes(x = n_stomachs, y = new_taxa))+
+  geom_line(data = boot_result,
+            aes(x = n_stomachs,
+                y = new_taxa,
+                group = iter),
+            stat = 'smooth',
+            method = 'lm',
+            formula = y ~ log(x + 1e-6) + 0,
+            se = FALSE,
+            color = 'red',
+            alpha = 0.1)
+
+```
+
+Now we have a better idea of what the error around our cumulative prey curve may be. It doesn't seem like we've leveled off quite yet, but we're starting to get an indication that when we do, it may be at somewhere around 2-6 total taxa.
+
+Note that we are starting at 1 stomach. Since we're modeling the log of the number of stomachs, we can't actually say anything about 0 stomachs as the log of 0 is undefined.
+
+```{r}
+#| code-fold: false
+log(0)
+```
+
+# Leveling off?
+
+A few papers check if the slope of a line through the last 3-5 points is less than 0.05 to confirm whether the curve has, in fact, leveled off. As we noted in our discussion, I have some reservations around this, but let's see if it's the case for our data.
+
+```{r}
+mod_level_off <- lm(
+  new_taxa ~ n_stomachs,
+  # last 5 data points
+  data = bsb_summary[(nrow(bsb_summary)-4):nrow(bsb_summary),]
+)
+
+summary(mod_level_off)
+```
+
+While the slope of the line is not significantly different than zero, its value is greater than 0.05 at 0.20. According to those papers citing Bizzarro et al. 2009 ([Schmitt et al. 2017](https://afspubs.onlinelibrary.wiley.com/doi/full/10.1080/19425120.2016.1271844), [Brown et al. 2012](https://link.springer.com/article/10.1007/s10641-011-9959-z)), this would indicate that more samples are needed.
+
+To visualize, we can plot the line along with our other models. As discussed, we can see that the slope of the line is not significant as a horizontal line (a line with no slope, here at y = 4) can remain entirely within the confidence intervals.
+
+```{r}
+ggplot(data = boot_result) +
+  geom_line(aes(x = n_stomachs,
+                y = new_taxa,
+                group = iter),
+            stat = 'smooth',
+            method = 'lm',
+            formula = y ~ log(x) + 0,
+            alpha = 0.1) +
+  geom_point(data = bsb_summary,
+             aes(x = n_stomachs, y = new_taxa),
+             color = 'red') +
+  geom_smooth(data = mod_level_off,
+            aes(x = n_stomachs, y = new_taxa),
+            method = 'lm',
+            formula = y ~ x,
+            se = T,
+            color = 'blue',
+            fill = 'lightblue') +
+  geom_hline(yintercept = 4, linetype = 'dashed')
+```
+
