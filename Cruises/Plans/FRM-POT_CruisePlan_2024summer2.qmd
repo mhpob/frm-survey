@@ -1,0 +1,479 @@
+---
+title: 'Pot Survey -- Late Summer 2024'
+subtitle: "July-September 2024   *F/V Integrity*   West Ocean City, MD"
+format: html
+editor: visual
+echo: false
+message: false
+warning: false
+params:
+  participants:
+    value:
+      p1: "Mike O'Brien"
+      p2: "Evan Kostelecky"
+  start:
+    value:
+      d1: '2024-08-01 02:30'
+      d2: '2024-08-01 02:30'
+  seed: 20240801
+  n_control: 2
+  n_exp: 4
+  vessel_sp_kts: 8
+---
+
+```{r}
+#| label: params
+library(sf); library(ggplot2); library(concaveman); library(TSP); library(units)
+library(data.table); library(targets)
+```
+
+```{r}
+#| label: geo-base
+
+turbines <- usw_locations_202211 |> 
+  tar_read() |> 
+  st_read(quiet = TRUE)
+turbines <- turbines[!grepl('Within 1 nm', turbines$propTSS),]
+
+turbine_boundary <- concaveman::concaveman(turbines)
+
+setDT(turbines)[c(st_contains(turbine_boundary,
+                           st_buffer(geom, units::as_units(10, 'meters')),
+                           sparse = F)), location := 'inner']
+turbines[is.na(location), location := 'outer']
+
+
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+zones <- zones[zones$zone == 'A', ]
+
+ctrl_area <- st_read(tar_read(frm_control),
+                     quiet = T)
+```
+
+```{r}
+#| label: ctrl-site-selection
+set.seed(params$seed)
+
+ctrl_sites <- ctrl_area |> 
+  st_transform(26918) |>
+  st_buffer(dist = -units::set_units(550, 'meter')) |>
+  st_sample(params$n_control) |> 
+  st_as_sf() |> 
+  st_transform(4326) |>
+  data.table() |> 
+  _[order(st_coordinates(x)[, 1])] |> 
+  _[, station := paste0('C', substr(params$seed, 3, 6),
+                         '-',
+                         1:params$n_control)] 
+
+setnames(ctrl_sites, 'x', 'geometry')
+st_geometry(ctrl_sites) <- 'geometry'
+```
+
+```{r}
+#| label: exp-site-selection
+
+exp_sites <- turbines |>
+  _[grepl('-1\\d$', name) & location == 'inner'] |>
+  _[sample(.N, params$n_exp)] |>
+  _[, .(station = name, geometry = geom)] |>
+  st_as_sf()
+
+```
+
+```{r}
+#| label: combine-sites
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        station = 'OCMD')
+
+# rtwb <- c(-74.645, 38.303) |> 
+#   st_point() |> 
+#   st_sfc(crs = 4326) |> 
+#   st_sf(geometry = _,
+#         station = 'RTWB')
+
+stations <- rbind(ocmd, ctrl_sites, exp_sites)
+
+setDT(stations)[, ':='(lon = st_coordinates(geometry)[,1],
+                       lat = st_coordinates(geometry)[,2])]
+dm <- function(x){
+  paste(as.integer(x), round((abs(x) %% 1) * 60, 4))
+}
+stations[, ':='(lon_dm = dm(lon),
+                lat_dm = dm(lat))]
+
+stations <- st_as_sf(stations)
+```
+
+```{r}
+#| label: tsp
+
+tsp <- TSP(as.dist(st_distance(stations)))
+
+tour <- solve_TSP(tsp, method = 'farthest_insertion')
+
+path <- c(cut_tour(tour, 1, exclude_cut = FALSE), 1)
+```
+
+```{r}
+#| label: calc-dist-matrices
+dist_calc <- function(stations, new_unit = 'nautical_mile'){
+  dist_mat <- st_distance(stations)
+  
+  dist_mat <- set_units(dist_mat, new_unit, mode = 'standard')
+  
+  rownames(dist_mat) <- stations$station
+  colnames(dist_mat) <- stations$station
+
+  dist_mat
+}
+
+tf <- function(dist_mat, speed, pretty = T){
+  mat <- dist_mat |>
+    as.numeric() |>
+    matrix(ncol = sqrt(length(dist_mat)))
+  
+  if(pretty == T){
+  mat <- (mat / speed) * 3600
+  
+  mat <- ceiling(mat / (5 * 60)) * (5 * 60)
+  
+  mat <- as.POSIXct(mat,
+                    tz = 'UTC',
+                    origin = '1970-01-01')
+  
+  mat <- format(mat, '%H h %M m')
+  
+  mat <- matrix(mat, ncol = sqrt(length(mat)))
+  
+  diag(mat) <- '-'
+  
+  }else{
+    mat <- ceiling((mat / speed) * 12) / 12
+    
+    mat <- matrix(mat, ncol = sqrt(length(mat)))
+  }
+  
+  rownames(mat) <- rownames(dist_mat)
+  colnames(mat) <- colnames(dist_mat)
+  
+  mat
+}
+
+nm_matrix <- round(dist_calc(stations), 2)
+time_matrix_raw <- tf(nm_matrix, params$vessel_sp_kts, pretty = F)
+time_matrix_pretty <- tf(nm_matrix, params$vessel_sp_kts)
+```
+
+```{r}
+#| label: cruise-seq
+
+deploy_seq <- data.table(start = stations$station[path[1:(length(path) - 1)]],
+                         end = stations$station[path[2:length(path)]],
+                         sttime = c(as.POSIXct(params$start$d1) + 30*60, rep(NA, 6)),
+                         endtime = c(as.POSIXct(params$start$d1), rep(NA, 6)),
+                         pots = c(as.POSIXct(params$start$d1), rep(NA, 6)))
+deploy_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
+deploy_seq[1, pots := endtime + 10 * 60]
+
+for(i in 2:(length(path)-1)){
+  deploy_seq[i, sttime := deploy_seq$pots[i-1]]
+  deploy_seq[i, endtime := sttime + time_matrix_raw[start, end] * 3600]
+  deploy_seq[i, pots := endtime + 10 * 60]
+}
+
+
+rec_seq <- data.table(start =stations$station[path[1:(length(path) - 1)]],
+                         end = stations$station[path[2:length(path)]],
+                         sttime = c(as.POSIXct(params$start$d2) + 30*60, rep(NA, 6)),
+                         endtime = c(as.POSIXct(params$start$d2), rep(NA, 6)),
+                         pots = c(as.POSIXct(params$start$d2), rep(NA, 6)))
+rec_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
+rec_seq[1, pots := endtime + 15 * 60]
+
+for(i in 2:(length(path)-1)){
+  rec_seq[i, sttime := rec_seq$pots[i-1]]
+  rec_seq[i, endtime := sttime + time_matrix_raw[start, end] * 3600]
+  rec_seq[i, pots := endtime + 15 * 60]
+}
+```
+
+## Participants
+
+```{r}
+#| label: cruise-participants
+umces_crew <- sapply(params$participants,
+                     function(x){
+                       paste0(
+                         '[',
+                         x,
+                         '](mailto:',
+                         substring(x, 1, 1),
+                         gsub(".* |$..*|'", '', x),
+                         '@umces.edu',
+                         ')'
+                       )
+                     }
+)
+umces_initials <- lapply(lapply(lapply(params$participants, function(x) lapply(strsplit(x, ' '), substr, 1, 1)), unlist), paste, collapse = '')
+```
+
+::: columns
+::: {.column width="50%"}
+### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
+
+```{r}
+#| output: asis
+#| 
+cat(paste('- ', umces_crew), sep = '\n')
+```
+:::
+
+::: {.column width="50%"}
+### `r paste(format(as.POSIXct(params$start$d1), '%d %B'), format(as.POSIXct(params$start$d2), '%d %B'), sep = ' - ')`
+
+```{r}
+#| output: asis
+cat(paste('- ', umces_crew), sep = '\n')
+cat('- Capt. Brandon Harrington\n- *Integrity* mate')
+```
+:::
+:::
+
+## Schedule
+
+### `r format(as.POSIXct(params$start$d1) - 24*60*60, '%d %B')`
+
+-   Scientific crew (`r paste(umces_initials, collapse = ', ')`)
+    -   12:00 - 13:00 `r paste(umces_initials, collapse = '/')` pack CBL truck (2017 Silverado) at Solomons, MD. Drive to Microtel West Ocean City.
+    -   18:00 Arrive Microtel.
+
+### `r format(as.POSIXct(params$start$d1), '%d %B')`
+
+-   Full crew
+    -   `r format(as.POSIXct(params$start$d1), '%H:%M')` Arrive at F/V Integrity (Sea Born LLC)
+    -   `r paste(format(deploy_seq$sttime[1], '%H:%M'), format(deploy_seq$endtime[7], '%H:%M'), sep = ' - ')` Fish pot deployment aboard F/V Integrity
+-   Scientific crew
+    -   16:00 Pick up dry ice from Harris Teeter
+        -   31221 Americana Pkwy, Selbyville, DE 19975
+
+### `r format(as.POSIXct(params$start$d2), '%d %B')`
+
+-   Scientific crew
+    -   `r format(as.POSIXct(params$start$d2) - 20*60, '%H:%M')` Check out of Microtel West Ocean City
+-   Full crew
+    -   `r format(as.POSIXct(params$start$d2), '%H:%M')` Arrive at F/V Integrity
+    -   `r paste(format(rec_seq$sttime[1], '%H:%M'), format(rec_seq$endtime[7], '%H:%M'), sep = ' - ')`: Fish pot recovery aboard F/V Integrity
+    -   `r format(rec_seq$endtime[7] + 20*60, '%H:%M')` Pick up trailer from MD Coastal Bays Program
+    -   `r paste(format(rec_seq$endtime[7] + 35*60, '%H:%M'), format(rec_seq$endtime[7] + 2*60*60, '%H:%M'), sep = ' - ')` Remove pots from F/V Integrity, load onto trailer. Unload at MD Coastal Bays program. Repeat as needed.
+        -   8219 Stephen Decatur Hwy, Berlin, MD 21811
+-   Scientific crew
+    -   Return to Solomons, MD.
+    -   `r format(rec_seq$endtime[7] + 2*60*60 + 4.5*60*60, '%H:%M')`: Arrive in Solomons. Unpack and return truck.
+
+## Packing list
+
+::: columns
+::: {.column width="33%"}
+🔲 Fish totes (2)
+
+🔲 Measuring board
+
+🔲 Weight bucket with scales
+
+🔲 Large cooler
+
+🔲 Tool box
+:::
+
+::: {.column width="33%"}
+🔲 Bibs, boots, gloves
+
+🔲 Kill buckets (2)
+
+🔲 MS222, sampling bags, and bag tags
+
+🔲 Data sheets (station, catch, measurement)
+
+🔲 Clipboard
+:::
+
+::: {.column width="33%"}
+🔲 GPS + spare batteries
+
+🔲 Castaway CTD
+
+🔲 Samsung tablet
+
+🔲 Release transponder/box
+:::
+:::
+
+## Protocols
+
+### Deployment
+
+::: columns
+::: {.column width="50%"}
+-   Ropeless gear
+    -   Affix one HOBO logger each to two recovery cages
+        -   Slip logger into the side-cage support ribbing and affix with cable tie
+        -   Record serial number of release cage and serial number of HOBO logger
+    -   Turn on tablet \>10 minutes before deployment and open Edgetech app to acquire GPS signal
+    -   Note serial number of recovery cage and mark as "deployed" in the Edgetech app as deploying pot
+:::
+
+::: {.column width="50%"}
+-   GPS
+    -   Set waypoint prefix to "`r substr(params$seed, 3, 6)`"
+        -   From the main menu, select Setup, then Waypoints, then change prefix
+    -   Start recording track upon arrival
+        -   From map screen, press **ENTER** twice
+    -   Mark waypoints when block and release cage are deployed
+        -   Press **MARK** then **ENTER**
+    -   Mark waypoints when pots are deployed (not often possible)
+    -   Stop recording track
+        -   From map screen, press **ENTER**, select **STOP**, then **SAVE**
+:::
+:::
+
+### Recovery
+
+::: columns
+::: {.column width="50%"}
+-   Ropeless gear
+    -   Turn on tablet \>10 minutes before recovery and open Edgetech app to acquire GPS signal
+    -   Affix transponder to deck box and turn box on. Confirm that box is connected to tablet
+    -   Stop vessel, place transponder in water
+    -   Trigger release
+    -   Recover transponder, turn deck box off
+-   Castaway CTD
+    -   Affix buoy line to block and attach CTD to the bottom of the line
+    -   Turn on and activate CTD
+    -   Drop block to the bottom and recover using pot hauler
+    -   Save CTD cast
+-   GPS (buttons as above)
+    -   Start recording track when moving to retrieve
+    -   Mark waypoints when ropeless cage is triggered, cage and block are recovered
+    -   Stop recording track
+:::
+
+::: {.column width="50%"}
+-   Measurements
+    -   Identify from which end the captain is starting. If the release cage end, start with 9 "far" pots. If the block end, start with 6 "near" pots.
+    -   All fish from first stratum are placed into one bin, those from the stratum are placed into the other. Recorder keeps track of when to switch bins (6 pots for near-first recovery, 9 pots for far-first).
+    -   Person on gunwale reads off pot tag ID and enumerates organisms. Recorder notes on data sheet.
+    -   A total of 30 BSB are retained for measuring, preferably 15 per near/far stratum.
+    -   If confident that 15/stratum will be caught, others can be immediately released.
+    -   While transiting to next site, record weight, length, and sex of 30 individuals per fish species.
+    -   If more than 15 fish/stratum available, measurements should be evenly split between strata.
+    -   5 fish per stratum are retained for diet analyses; signs of barotrauma, esp. everted stomachs should be carefully noted.
+:::
+:::
+
+\newpage
+
+```{r}
+library(leaflet)
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 10) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |> 
+  addPolygons(data = zones, color = 'pink') |>
+  addPolygons(data = ctrl_area, color = 'gray')|>
+  addCircleMarkers(data = stations, label = ~ station) |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[c(path),])),
+      'LINESTRING'
+    ), crs = 4326
+  )) |>
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares') |>
+  addMiniMap(zoomLevelFixed = 7)
+```
+
+## Cruise plan; calculated at `r params$vessel_sp_kts` knots
+
+### `r format(as.POSIXct(params$start$d1), '%d %B')`: Full crew
+
+::: columns
+::: {.column width="50%"}
+-   `r format(as.POSIXct(params$start$d1), '%H:%M')` Meet at *F/V Integrity*
+-   `r format(deploy_seq$sttime[1], '%H:%M')` Depart `r deploy_seq$start[1]` for **`r deploy_seq$end[1]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[1],]$lat_dm`, `r stations[stations$station == deploy_seq$end[1],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[1], '%H:%M')` Arrive **`r deploy_seq$end[1]`**. Deploy pots.
+-   `r format(deploy_seq$pots[1], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[2]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[2],]$lat_dm`, `r stations[stations$station == deploy_seq$end[2],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[2], '%H:%M')` Arrive **`r deploy_seq$end[2]`**. Deploy pots.
+-   `r format(deploy_seq$pots[2], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[3]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[3],]$lat_dm`, `r stations[stations$station == deploy_seq$end[3],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[3], '%H:%M')` Arrive **`r deploy_seq$end[3]`**. Deploy pots.
+-   `r format(deploy_seq$pots[3], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[4]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[4],]$lat_dm`, `r stations[stations$station == deploy_seq$end[4],]$lon_dm`** </font>
+:::
+
+::: {.column width="50%"}
+-   `r format(deploy_seq$endtime[4], '%H:%M')` Arrive **`r deploy_seq$end[4]`**. Deploy pots.
+-   `r format(deploy_seq$pots[4], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[5]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[5],]$lat_dm`, `r stations[stations$station == deploy_seq$end[5],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[5], '%H:%M')` Arrive **`r deploy_seq$end[5]`**. Deploy pots.
+-   `r format(deploy_seq$pots[5], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[6]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[6],]$lat_dm`, `r stations[stations$station == deploy_seq$end[6],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[6], '%H:%M')` Arrive **`r deploy_seq$end[6]`**. Deploy pots.
+-   `r format(deploy_seq$pots[6], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[7]`**
+-   <font size= "5"> **`r stations[stations$station == deploy_seq$end[7],]$lat_dm`, `r stations[stations$station == deploy_seq$end[7],]$lon_dm`** </font>
+-   `r format(deploy_seq$endtime[7], '%H:%M')` Arrive **`r deploy_seq$end[7]`**.
+:::
+:::
+
+### `r format(as.POSIXct(params$start$d2), '%B %d')`: Full crew
+
+::: columns
+::: {.column width="50%"}
+-   `r format(as.POSIXct(params$start$d2), '%H:%M')` Meet at *F/V Integrity*
+-   `r format(rec_seq$sttime[1], '%H:%M')` Depart `r rec_seq$start[1]` for **`r rec_seq$end[1]`**
+-   `r format(rec_seq$endtime[1], '%H:%M')` Arrive **`r rec_seq$end[1]`**. Deploy CTD. Recover pots.
+-   `r format(rec_seq$pots[1], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[2]`**
+-   `r format(rec_seq$endtime[2], '%H:%M')` Arrive **`r rec_seq$end[2]`**. Deploy CTD. Recover pots.
+-   `r format(rec_seq$pots[2], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[3]`**
+-   `r format(rec_seq$endtime[3], '%H:%M')` Arrive **`r rec_seq$end[3]`**. Deploy CTD. Recover pots.
+:::
+
+::: {.column width="50%"}
+-   `r format(rec_seq$pots[3], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[4]`**
+-   `r format(rec_seq$endtime[4], '%H:%M')` Arrive **`r rec_seq$end[4]`**. Deploy CTD. Recover pots.
+-   `r format(rec_seq$pots[4], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[5]`**
+-   `r format(rec_seq$endtime[5], '%H:%M')` Arrive **`r rec_seq$end[5]`**. Deploy CTD. Recover pots.
+-   `r format(rec_seq$pots[5], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[6]`**
+-   `r format(rec_seq$endtime[6], '%H:%M')` Arrive **`r rec_seq$end[6]`**. Deploy CTD. Recover pots.
+-   `r format(rec_seq$pots[6], '%H:%M')` Finish recovering pots. Depart for **`r rec_seq$end[7]`**
+-   `r format(rec_seq$endtime[7], '%H:%M')` Arrive **`r rec_seq$end[7]`**
+:::
+:::
+
+## Distances
+
+```{r}
+#| label: dist-matrix
+nm_matrix |>
+  as.numeric() |>
+  matrix(ncol = length(stations$station),
+         dimnames = list(stations$station, stations$station)) |>
+  knitr::kable('html', align = 'c', caption = 'Distance, nautical miles')
+
+time_matrix_pretty |>
+  matrix(ncol = length(stations$station),
+         dimnames = list(stations$station, stations$station)) |> 
+  knitr::kable('html', align = 'c', caption = paste('Distance, time at', 
+                                                    params$vessel_sp_kts,
+                                                    'kts')
+  )
+```
