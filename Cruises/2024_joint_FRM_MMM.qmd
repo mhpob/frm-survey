@@ -277,22 +277,13 @@ leaflet() |>
 
 ### Late Summer
 
-Starting at the farthest-southern site and working northward, FRM deployment will finish at site UK-13.
-
--   7 minutes to D1, en route to OCMD
--   16 minutes from D1 to D2
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UK-13. UK-13 is 15 minutes south of V4; all other MMM are in a straight line back to Ocean City, MD.
 
 ### Autumn
 
-Starting at the farthest-southern site and working northward, FRM deployment will finish at site UL-10.
-
--   Not very close to any MMM site
--   32 minutes RT to D1
--   47 minutes RT to D2
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UL-10. UL-10 is approximately 30 minutes south west of V4; additional transit time will be involved to "back-track" to this site. UL-10 is approximately 23 minutes due south of A5-C.
 
 ## Overall summary
 
--   D1 and D2 would be best fit for the Late-Summer (July-September) FRM cruise
-    -   3-5 months from initial deployment
--   T1-C can be tended during any FRM cruise
--   A5-C, V4, and V5 would be best fit in the Spring or Early-Summer FRM cruises
+-   T1-C and V5 can be tended during any FRM cruise
+-   A5-C and V4 would be best fit in the Late-Summer FRM cruise
