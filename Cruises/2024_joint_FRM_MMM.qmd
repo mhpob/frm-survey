@@ -61,6 +61,7 @@ mmm <- fread(
     V5, 38.3368, -74.7682
     "
 ) |> 
+  _[!grepl("^D", station)] |> 
   st_as_sf(coords = c('lon', 'lat'),
            crs = 4326)
 ```
@@ -195,26 +196,24 @@ time_matrix_raw <- lapply(nm_matrix, tf, params$vessel_sp_kts, pretty = F)
 time_matrix_pretty <- lapply(nm_matrix, tf, params$vessel_sp_kts)
 ```
 
-
-
 The intent of this document is to aid in planning which MMM devices should be tended in the four FRM cruises. The current considerations are:
 
-  - One FRM cruise each will be conducted during the following periods:
-    - Spring (March-May); random site selection seed = 20240401
-    - Early Summer (May-July); 20240601
-    - Late Summer (July-September); 20240801
-    - Autumn (September-November); 20241001
-  - MMM moorings will be tended on Day 1 of candidate FRM cruises
-  - MMM operations must be conducted after all pots are deployment due to limited deck space
-  - 1-2 MMM moorings can be tended, largely dependent on distance from final FRM site and sea state
-  - MMM mooring priority will be ranked according to:
-    - Ease of access from FRM cruises
-    - Spatiotemporal presence of target species
-    - Battery life of individual instruments
-    - Redundancy with other MMM moorings, the Metocean buoy, and the RTWB
-  - A5, V4, and V5 have redundancy with each other and Metocean buoy
-  - T1C no redundancy (but easiest to get to)
-  - D1, D1 have low redundancy and are comparatively hard to get to
+-   One FRM cruise each will be conducted during the following periods:
+    -   Spring (March-May); random site selection seed = 20240401
+    -   Early Summer (May-July); 20240601
+    -   Late Summer (July-September); 20240801
+    -   Autumn (September-November); 20241001
+-   As MMM instruments will be tended in April 2024, Spring and Early Summer cruises (c. 1-3 months after tending) will have minimal value and are no longer investigated
+-   MMM moorings will be tended on Day 1 of candidate FRM cruises
+-   MMM operations must be conducted after all pots are deployment due to limited deck space
+-   1-2 MMM moorings can be tended, largely dependent on distance from final FRM site and sea state
+-   MMM mooring priority will be ranked according to:
+    -   Ease of access from FRM cruises
+    -   Spatiotemporal presence of target species
+    -   Battery life of individual instruments
+    -   Redundancy with other MMM moorings, the Metocean buoy, and the RTWB
+-   A5, V4, and V5 have redundancy with each other and Metocean buoy
+-   T1C no redundancy (but easiest to get to)
 
 ## Map
 
@@ -231,22 +230,22 @@ leaflet() |>
   addPolygons(data = zones, color = 'pink') |>
   addPolygons(data = ctrl_area, color = 'gray')|>
   addCircleMarkers(data = mmm, label = ~ station, color = "black") |> 
-  addCircleMarkers(data = stations[[1]], label = ~ station, color = 'red',
-                   group = "Spring") |> 
-  addPolylines(data = st_sfc(
-    st_cast(
-      do.call(c, st_geometry(stations[[1]][c(path[[1]]),])),
-      'LINESTRING'
-    ), crs = 4326
-  ), color = 'red', group = "Spring") |>
-  addCircleMarkers(data = stations[[2]], label = ~ station, color = 'blue',
-                   group = "Early Summer") |> 
-  addPolylines(data = st_sfc(
-    st_cast(
-      do.call(c, st_geometry(stations[[2]][c(path[[2]]),])),
-      'LINESTRING'
-    ), crs = 4326
-  ), color = 'blue', group = "Early Summer") |>
+  # addCircleMarkers(data = stations[[1]], label = ~ station, color = 'red',
+  #                  group = "Spring") |> 
+  # addPolylines(data = st_sfc(
+  #   st_cast(
+  #     do.call(c, st_geometry(stations[[1]][c(path[[1]]),])),
+  #     'LINESTRING'
+  #   ), crs = 4326
+  # ), color = 'red', group = "Spring") |>
+  # addCircleMarkers(data = stations[[2]], label = ~ station, color = 'blue',
+  #                  group = "Early Summer") |> 
+  # addPolylines(data = st_sfc(
+  #   st_cast(
+  #     do.call(c, st_geometry(stations[[2]][c(path[[2]]),])),
+  #     'LINESTRING'
+  #   ), crs = 4326
+  # ), color = 'blue', group = "Early Summer") |>
   addCircleMarkers(data = stations[[3]], label = ~ station, color = 'green',
                    group = "Late Summer") |> 
   addPolylines(data = st_sfc(
@@ -265,52 +264,35 @@ leaflet() |>
   ), color = 'yellow', group = "Autumn") |>
   addMiniMap(zoomLevelFixed = 7) |> 
   addLayersControl(
-    overlayGroups = c("Spring", "Early Summer", "Late Summer", "Autumn"),
+    overlayGroups = c(
+      # "Spring", "Early Summer",
+      "Late Summer", "Autumn"),
     options = layersControlOptions(collapsed = FALSE)
   ) |> 
 
   addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares')
 ```
 
-
 ## Summary of map
-### Spring
 
-Starting at the farthest-southern site and working northward, FRM deployment will finish at site UH-11.
-
-  - Return transit is directly over A-5C, V5, and T-1C
-  - Approximately 20 minutes round-trip (RT) from V4 at 8 knots
-  - 21 minutes one-way from D1
-  - 37 minutes one-way from D2
-
-### Early Summer
-
-Starting at the farthest-southern site and working northward, FRM deployment will finish at site UH-10.
-
-  - Co-located with A5-C
-  - Return transit is directly over V5 and T1-C
-  - Approximately 40 minutes round-trip (RT) from V4 at 8 knots
-  - 23 minutes one-way from D1
-  - 40 minutes one-way from D2
-  
 ### Late Summer
 
 Starting at the farthest-southern site and working northward, FRM deployment will finish at site UK-13.
 
-  - 7 minutes to D1, en route to OCMD
-  - 16 minutes from D1 to D2
-  
+-   7 minutes to D1, en route to OCMD
+-   16 minutes from D1 to D2
+
 ### Autumn
 
 Starting at the farthest-southern site and working northward, FRM deployment will finish at site UL-10.
 
-  - Not very close to any MMM site
-  - 32 minutes RT to D1
-  - 47 minutes RT to D2
+-   Not very close to any MMM site
+-   32 minutes RT to D1
+-   47 minutes RT to D2
 
 ## Overall summary
 
-  - D1 and D2 would be best fit for the Late-Summer (July-September) FRM cruise
-    - 3-5 months from initial deployment
-  - T1-C can be tended during any FRM cruise
-  - A5-C, V4, and V5 would be best fit in the Spring or Early-Summer FRM cruises
+-   D1 and D2 would be best fit for the Late-Summer (July-September) FRM cruise
+    -   3-5 months from initial deployment
+-   T1-C can be tended during any FRM cruise
+-   A5-C, V4, and V5 would be best fit in the Spring or Early-Summer FRM cruises
