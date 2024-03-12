@@ -1,0 +1,316 @@
+---
+title: 'Joint MMM-FRM equipment tending'
+format: html
+editor: visual
+echo: false
+message: false
+warning: false
+params:
+  seed:
+    value:
+      spring: 20240401
+      earlysummer: 20240601
+      latesummer: 20240801
+      autumn: 20241001
+  n_control: 2
+  n_exp: 4
+  vessel_sp_kts: 8
+---
+
+```{r}
+#| label: params
+library(sf); library(ggplot2); library(concaveman); library(TSP); library(units)
+library(data.table); library(targets)
+```
+
+```{r}
+#| label: geo-base
+
+turbines <- usw_locations_202211 |> 
+  tar_read() |> 
+  st_read(quiet = TRUE)
+turbines <- turbines[!grepl('Within 1 nm', turbines$propTSS),]
+
+turbine_boundary <- concaveman::concaveman(turbines)
+
+setDT(turbines)[c(st_contains(turbine_boundary,
+                           st_buffer(geom, units::as_units(10, 'meters')),
+                           sparse = F)), location := 'inner']
+turbines[is.na(location), location := 'outer']
+
+
+zones <- st_read(tar_read(usw_buildout),
+                 quiet = T)
+zones <- zones[zones$zone == 'A', ]
+
+ctrl_area <- st_read(tar_read(frm_control),
+                     quiet = T)
+```
+
+```{r}
+#| label: mmm-sites
+
+mmm <- fread(
+  text = 
+    "station, lat, lon
+    T-1C, 38.3319, -74.9491
+    A-5C, 38.3360, -74.7226
+    D1, 38.2973, -74.6928
+    D2, 38.2698, -74.6741
+    V4, 38.3350, -74.6768
+    V5, 38.3368, -74.7682
+    "
+) |> 
+  st_as_sf(coords = c('lon', 'lat'),
+           crs = 4326)
+```
+
+```{r}
+#| label: site-selection
+
+# create empty lists of control and experimental sites.
+# each element will be one cruise
+ctrl_sites <- vector("list", 4)
+exp_sites <- vector("list", 4)
+
+for(i in seq_along(params$seed)) {
+  set.seed(params$seed[[i]])
+  
+  ctrl_sites[[i]] <- ctrl_area |> 
+    st_transform(26918) |>
+    st_buffer(dist = -units::set_units(550, 'meter')) |>
+    st_sample(params$n_control) |> 
+    st_as_sf() |> 
+    st_transform(4326) |>
+    data.table() |> 
+    _[order(st_coordinates(x)[, 1])] |> 
+    _[, station := paste0('C', substr(params$seed[[i]], 3, 6),
+                          '-',
+                          1:params$n_control)] 
+  
+  setnames(ctrl_sites[[i]], 'x', 'geometry')
+  st_geometry(ctrl_sites[[i]]) <- 'geometry'
+  
+  
+  exp_sites[[i]] <- turbines |>
+    _[grepl('-1\\d$', name) & location == 'inner'] |>
+    _[sample(.N, params$n_exp)] |>
+    _[, .(station = name, geometry = geom)] |>
+    st_as_sf()
+}
+
+
+```
+
+```{r}
+#| label: combine-sites
+ocmd <- c(-75.10333, 38.32742) %>% 
+  st_point() %>% 
+  st_sfc(crs = 4326) %>% 
+  st_sf(geometry = .,
+        station = 'OCMD')
+
+dm <- function(x){
+  paste(as.integer(x), round((abs(x) %% 1) * 60, 4))
+}
+
+stations <- vector("list", 4)
+for(i in seq_along(params$seed)){
+  stations[[i]] <- rbind(ocmd, ctrl_sites[[i]], exp_sites[[i]])
+  
+  setDT(stations[[i]])[, ':='(lon = st_coordinates(geometry)[,1],
+                              lat = st_coordinates(geometry)[,2])]
+  
+  stations[[i]][, ':='(lon_dm = dm(lon),
+                       lat_dm = dm(lat))]
+  
+  stations[[i]] <- st_as_sf(stations[[i]])
+}
+```
+
+```{r}
+#| label: tsp
+
+tsp <- lapply(stations, 
+              function(.) TSP(as.dist(st_distance(.)))
+)
+
+tour <- lapply(tsp,
+               solve_TSP, method = 'farthest_insertion')
+
+path <- lapply(tour,
+               function(.) c(cut_tour(., 1, exclude_cut = FALSE), 1)
+)
+```
+
+```{r}
+#| label: calc-dist-matrices
+dist_calc <- function(stations, new_unit = 'nautical_mile'){
+  dist_mat <- st_distance(stations)
+  
+  dist_mat <- set_units(dist_mat, new_unit, mode = 'standard')
+  
+  rownames(dist_mat) <- stations$station
+  colnames(dist_mat) <- stations$station
+
+  dist_mat
+}
+
+tf <- function(dist_mat, speed, pretty = T){
+  mat <- dist_mat |>
+    as.numeric() |>
+    matrix(ncol = sqrt(length(dist_mat)))
+  
+  if(pretty == T){
+  mat <- (mat / speed) * 3600
+  
+  mat <- ceiling(mat / (5 * 60)) * (5 * 60)
+  
+  mat <- as.POSIXct(mat,
+                    tz = 'UTC',
+                    origin = '1970-01-01')
+  
+  mat <- format(mat, '%H h %M m')
+  
+  mat <- matrix(mat, ncol = sqrt(length(mat)))
+  
+  diag(mat) <- '-'
+  
+  }else{
+    mat <- ceiling((mat / speed) * 12) / 12
+    
+    mat <- matrix(mat, ncol = sqrt(length(mat)))
+  }
+  
+  rownames(mat) <- rownames(dist_mat)
+  colnames(mat) <- colnames(dist_mat)
+  
+  mat
+}
+
+nm_matrix <- lapply(stations,
+                    function(.) round(dist_calc(.), 2)
+)
+time_matrix_raw <- lapply(nm_matrix, tf, params$vessel_sp_kts, pretty = F)
+time_matrix_pretty <- lapply(nm_matrix, tf, params$vessel_sp_kts)
+```
+
+
+
+The intent of this document is to aid in planning which MMM devices should be tended in the four FRM cruises. The current considerations are:
+
+  - One FRM cruise each will be conducted during the following periods:
+    - Spring (March-May); random site selection seed = 20240401
+    - Early Summer (May-July); 20240601
+    - Late Summer (July-September); 20240801
+    - Autumn (September-November); 20241001
+  - MMM moorings will be tended on Day 1 of candidate FRM cruises
+  - MMM operations must be conducted after all pots are deployment due to limited deck space
+  - 1-2 MMM moorings can be tended, largely dependent on distance from final FRM site and sea state
+  - MMM mooring priority will be ranked according to:
+    - Ease of access from FRM cruises
+    - Spatiotemporal presence of target species
+    - Battery life of individual instruments
+    - Redundancy with other MMM moorings, the Metocean buoy, and the RTWB
+  - A5, V4, and V5 have redundancy with each other and Metocean buoy
+  - T1C no redundancy (but easiest to get to)
+  - D1, D1 have low redundancy and are comparatively hard to get to
+
+## Map
+
+```{r}
+library(leaflet)
+wms_enc <- 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer'
+leaflet() |> 
+  setView(lng = -74.9, lat = 38.25, zoom = 10) |> 
+  addWMSTiles(
+    wms_enc,
+    layers = c(0:3, 6),
+    options = WMSTileOptions(format = "image/png", transparent = T)
+  ) |> 
+  addPolygons(data = zones, color = 'pink') |>
+  addPolygons(data = ctrl_area, color = 'gray')|>
+  addCircleMarkers(data = mmm, label = ~ station, color = "black") |> 
+  addCircleMarkers(data = stations[[1]], label = ~ station, color = 'red',
+                   group = "Spring") |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[[1]][c(path[[1]]),])),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'red', group = "Spring") |>
+  addCircleMarkers(data = stations[[2]], label = ~ station, color = 'blue',
+                   group = "Early Summer") |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[[2]][c(path[[2]]),])),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'blue', group = "Early Summer") |>
+  addCircleMarkers(data = stations[[3]], label = ~ station, color = 'green',
+                   group = "Late Summer") |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[[3]][c(path[[3]]),])),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'green', group = "Late Summer") |>
+  addCircleMarkers(data = stations[[4]], label = ~ station, color = 'yellow',
+                   group = "Autumn") |> 
+  addPolylines(data = st_sfc(
+    st_cast(
+      do.call(c, st_geometry(stations[[4]][c(path[[4]]),])),
+      'LINESTRING'
+    ), crs = 4326
+  ), color = 'yellow', group = "Autumn") |>
+  addMiniMap(zoomLevelFixed = 7) |> 
+  addLayersControl(
+    overlayGroups = c("Spring", "Early Summer", "Late Summer", "Autumn"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) |> 
+
+  addMeasure(primaryLengthUnit = 'meters', primaryAreaUnit = 'hectares')
+```
+
+
+## Summary of map
+### Spring
+
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UH-11.
+
+  - Return transit is directly over A-5C, V5, and T-1C
+  - Approximately 20 minutes round-trip (RT) from V4 at 8 knots
+  - 21 minutes one-way from D1
+  - 37 minutes one-way from D2
+
+### Early Summer
+
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UH-10.
+
+  - Co-located with A5-C
+  - Return transit is directly over V5 and T1-C
+  - Approximately 40 minutes round-trip (RT) from V4 at 8 knots
+  - 23 minutes one-way from D1
+  - 40 minutes one-way from D2
+  
+### Late Summer
+
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UK-13.
+
+  - 7 minutes to D1, en route to OCMD
+  - 16 minutes from D1 to D2
+  
+### Autumn
+
+Starting at the farthest-southern site and working northward, FRM deployment will finish at site UL-10.
+
+  - Not very close to any MMM site
+  - 32 minutes RT to D1
+  - 47 minutes RT to D2
+
+## Overall summary
+
+  - D1 and D2 would be best fit for the Late-Summer (July-September) FRM cruise
+    - 3-5 months from initial deployment
+  - T1-C can be tended during any FRM cruise
+  - A5-C, V4, and V5 would be best fit in the Spring or Early-Summer FRM cruises
