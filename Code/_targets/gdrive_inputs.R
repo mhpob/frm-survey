@@ -33,7 +33,7 @@ find_gdrive_cue <- function(data_source){
     # targets_update <- tar_meta()[tar_meta()$name == 'gdrive_cue',]$time
     
     
-    if(length(targets_update) == 0){
+    if(length(targets_update) == 0 | is.na(targets_update)){
       targets_update <- 1
     }else{
       attr(targets_update, 'tzone') <- 'UTC'

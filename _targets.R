@@ -9,7 +9,7 @@ tar_option_set(
   packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr',
                'xml2', 'units', 'data.table', 'pdftools'), 
   # default storage format
-  format = "feather" 
+  format = "qs" 
   # Set other options as needed.
 )
 
@@ -33,7 +33,6 @@ list(
     # Cues will always appear outdated so that they check every time
     # We want the cue to be T if we want to skip it, F if we want to run it
     tar_target(gdrive_cue, find_gdrive_cue(data_source),
-               format = 'qs',
                cue = tar_cue('always')),
     
     # After checking, pot/rec downloads will be cancelled if the target
@@ -44,22 +43,24 @@ list(
     tar_skip(raw_data,
              gdrive_download(data_source),
              skip = gdrive_cue,
-             format = 'file',
-             cue = tar_cue(mode = "always")
+             cue = tar_cue(mode = "always"),
+             format = 'file'
     )
   ),
   
+  # Note for debugging -- you may need to delete a file in order to get it to run
+  #   This is especially true if empty objects start being returned.
   tar_target(hobo,
              hobo_clean(
-               tar_read(raw_data_hobo),
-               tar_read(raw_data_pot)
+               raw_data_hobo,
+               raw_data_pot
              )
   ),
-  
+
   tar_target(castaway,
              castaway_clean(
-               tar_read(raw_data_rec_castaway),
-               tar_read(raw_data_pot_castaway)
+               raw_data_pot_castaway,
+               raw_data_rec_castaway
              )
   ),
   # # GPS inputs
@@ -96,32 +97,32 @@ list(
     usw_locations,
     'embargo/USWind_PDE-Locations_2022-0111.gpkg'
   ),
-  
+
   tar_file(boem_weas,
     'data/geo/boemwindlayers_4download.gpkg'
   ),
-  
+
   tar_file(update_202211,
            'data/geo/app-i-f-wtg-oss-locations.pdf'
   ),
-  
+
   tar_file(
     usw_buildout,
     add_buildout_zones(boem_weas)
   ),
-  
+
   tar_file(
     frm_control,
     add_control_area(boem_weas)
   ),
-  
+
   tar_file(
     usw_locations_202211,
     wtg_update_202211(update_202211, usw_locations)
-  ),
-  
-  tar_quarto(point_process, "reports/point_process.qmd",
-             cue = tar_cue('never'))
+  )
+  # 
+  # tar_quarto(point_process, "reports/point_process.qmd",
+  #            cue = tar_cue('never'))
 
   
 )
