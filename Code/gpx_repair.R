@@ -1,4 +1,4 @@
-library(sf); library(dplyr); library(xml2)
+library(sf); library(dplyr); library(xml2); library(mapview)
 
 # https://gdal.org/drivers/vector/gpx.html
 # GPX extension parser
@@ -61,6 +61,383 @@ load_points <- function(cruise_id, survey_type){
   ) |> 
     bind_rows()
 }
+
+create_key <- function(cruise_id, survey_type){
+  path <- paste('embargo/gps',
+                cruise_id,
+                'repaired',
+                survey_type,
+                paste('key', survey_type, cruise_id, sep = '_'),
+                sep = '/')
+  path <- paste0(path, '.csv')
+  
+  if(!file.exists(path)){
+    write.csv(data.frame(original_name = pts$name,
+                         new_name = '',
+                         original_cmt = pts$cmt,
+                         new_cmt = '',
+                         fid = row.names(pts)),
+              path,
+              row.names = FALSE, na = '')
+    path
+  }else{
+    cat('File already exists at', path)
+    path
+  }
+}
+
+key_points <- function(key_path){
+  pt_key <- read.csv(key_path,
+                     na.strings = '') |> 
+    mutate(original_name = as.character(original_name))
+  
+  pts <- pts |> 
+    left_join(pt_key, by = c('name' = 'original_name',
+                             'cmt' = 'original_cmt'))|> 
+    mutate(name = new_name,
+           cmt = new_cmt) |> 
+    select_at(vars(-starts_with('new'))) |> 
+    select(-fid)
+  
+  st_write(pts, 
+           paste(
+             dirname(key_path),
+             paste0(
+               'waypoints_repaired_',
+               format(min(pts$time) - 24*60*60, '%Y%m%d'),
+               '.gpx'
+             ),
+             sep = '/'
+           ),
+           delete_dsn = T
+  )
+  
+  pts
+}
+
+
+# 2404 pot cruise ----
+tracks <- load_tracks('2404', 'pot')
+pts <- load_points('2404', 'pot')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key('2404', 'pot')
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- new_pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(10, deploy_sites)
+
+recover_sites <- new_pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times (note change in TZ)
+deploy_times <- new_pts |> 
+  filter(grepl('R1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -05:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('R1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -05:00'))
+writeClipboard(recover_times$time)
+
+
+
+
+# 2311 pot cruise ----
+tracks <- load_tracks('2311', 'pot')
+pts <- load_points('2311', 'pot')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key('2311', 'pot')
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- new_pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(10, deploy_sites)
+
+recover_sites <- new_pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times (note change in TZ)
+deploy_times <- new_pts |> 
+  filter(grepl('[B]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -05:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('[B]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -05:00'))
+writeClipboard(recover_times$time)
+
+
+
+
+# 2310-2 pot cruise ----
+tracks <- load_tracks('2310_2', 'pot')
+pts <- load_points('2310_2', 'pot')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key('2310_2', 'pot')
+library(mapview)
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- new_pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(11, deploy_sites)
+
+recover_sites <- new_pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times
+deploy_times <- new_pts |> 
+  filter(grepl('[B]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('[B]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
+
+
+# 2310 pot cruise ----
+tracks <- load_tracks(2310, 'pot')
+pts <- load_points(2310, 'pot')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key(2310, 'pot')
+library(mapview)
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- new_pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(11, deploy_sites)
+
+recover_sites <- new_pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times
+deploy_times <- new_pts |> 
+  filter(grepl('[B]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('[B]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
+
+
+
+# 2309 rec cruise ----
+# dir.create('embargo/gps/2309/raw/rec', recursive = T)
+# dir.create('embargo/gps/2309/repaired/rec', recursive = T)
+
+tracks <- load_tracks(2309, 'rec')
+pts <- load_points(2309, 'rec')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key(2309, 'rec')
+library(mapview)
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+jigs <- new_pts |> 
+  filter(grepl('jig', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(7, jigs)
+
+drops <- new_pts |> 
+  filter(grepl('drop', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(3, drops)
+
+## Update times
+deploy_times <- new_pts |> 
+  filter(grepl('[BR]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('[BR]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
+
+
+
+
+# 2308 pot cruise ----
+tracks <- load_tracks(2308, 'pot')
+pts <- load_points(2308, 'pot')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key(2308, 'pot')
+library(mapview)
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+new_pts <- key_points(key_path)
+
+## update raw data gdrive spreadsheet
+##  This copies block 1 and 2 coords to the clipboard, use odd indices
+deploy_sites <- new_pts |> 
+  filter(grepl('[BR][12] deploy', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords <- function(ind, data) {
+  writeClipboard(paste(c(data[ind,]$coord, data[ind + 1,]$coord),
+                       collapse = ','))
+}
+concat_coords(1, deploy_sites)
+
+recover_sites <- new_pts |> 
+  filter(grepl('[BR][12] recover', name)) |> 
+  arrange(time, name) |>
+  mutate(coord = st_coordinates(geometry)) |> 
+  select(name, coord)
+concat_coords(11, recover_sites)
+
+## Update times
+deploy_times <- new_pts |> 
+  filter(grepl('[BR]1 deploy', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(deploy_times$time)
+
+recover_times <- new_pts |> 
+  filter(grepl('[BR]1 recover', name)) |> 
+  arrange(time) |>
+  select(name, time) |> 
+  mutate(time = format(time, '%Y-%m-%dT%H:%M:%S -04:00'))
+writeClipboard(recover_times$time)
+
+# 2308 rec cruise ----
+tracks <- load_tracks(2308, 'rec')
+pts <- load_points(2308, 'rec')
+
+## Create key to rename waypoints then open up the created file
+## and edit by hand
+key_path <- create_key(2308, 'rec')
+library(mapview)
+mapview(pts) + mapview(tracks)
+
+## Combine points and key
+key_points(key_path)
+
+
+
+
+# 2307 rec cruise ----
+## GPS ran out of battery ~1/4 into the first day
 
 # 2307 pot cruise ----
 tracks <- load_tracks(2307, 'pot')
