@@ -7,7 +7,7 @@ library(future)
 tar_option_set(
   # packages that your targets need to run
   packages = c('sf', 'dplyr', 'googledrive', 'readxl', 'purrr', 'tidyr',
-               'xml2', 'units', 'data.table', 'pdftools'), 
+               'xml2', 'units', 'data.table', 'pdftools', 'ggplot2'), 
   # default storage format
   format = "qs" 
   # Set other options as needed.
@@ -44,7 +44,7 @@ list(
              gdrive_download(data_source),
              skip = gdrive_cue,
              cue = tar_cue(mode = "always"),
-             format = 'file'
+             format = 'qs'
     )
   ),
   
@@ -56,11 +56,18 @@ list(
                raw_data_pot
              )
   ),
-
+  
   tar_target(castaway,
              castaway_clean(
                raw_data_pot_castaway,
                raw_data_rec_castaway
+             )
+  ),
+  
+  tar_target(depth_profiles_pot,
+             castaway_viz(
+               castaway,
+               survey_id = 'pot'
              )
   ),
   # # GPS inputs
@@ -97,25 +104,25 @@ list(
     usw_locations,
     'embargo/USWind_PDE-Locations_2022-0111.gpkg'
   ),
-
+  
   tar_file(boem_weas,
-    'data/geo/boemwindlayers_4download.gpkg'
+           'data/geo/boemwindlayers_4download.gpkg'
   ),
-
+  
   tar_file(update_202211,
            'data/geo/app-i-f-wtg-oss-locations.pdf'
   ),
-
+  
   tar_file(
     usw_buildout,
     add_buildout_zones(boem_weas)
   ),
-
+  
   tar_file(
     frm_control,
     add_control_area(boem_weas)
   ),
-
+  
   tar_file(
     usw_locations_202211,
     wtg_update_202211(update_202211, usw_locations)
@@ -123,6 +130,6 @@ list(
   # 
   # tar_quarto(point_process, "reports/point_process.qmd",
   #            cue = tar_cue('never'))
-
+  
   
 )
