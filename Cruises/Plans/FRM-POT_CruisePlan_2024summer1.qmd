@@ -1,6 +1,6 @@
 ---
 title: 'Pot Survey -- Early Summer 2024'
-subtitle: "May-July 2024   *F/V Integrity*   West Ocean City, MD"
+subtitle: "July 15-17, 2024   *F/V Integrity*   West Ocean City, MD"
 format: html
 editor: visual
 echo: false
@@ -13,9 +13,9 @@ params:
       p2: "Evan Kostelecky"
   start:
     value:
-      d1: '2024-06-01 02:30'
-      d2: '2024-06-01 02:30'
-  seed: 20240601
+      d1: '2024-07-16 02:30'
+      d2: '2024-07-17 02:30'
+  seed: 20240715
   n_control: 2
   n_exp: 4
   vessel_sp_kts: 8
@@ -90,13 +90,20 @@ ocmd <- c(-75.10333, 38.32742) %>%
   st_sf(geometry = .,
         station = 'OCMD')
 
+
+a5c <- c(-74.7232, 38.3360) |> 
+  st_point() |> 
+  st_sfc(crs = 4326) |> 
+  st_sf(geometry = _,
+        station = 'A5C')
+
 # rtwb <- c(-74.645, 38.303) |> 
 #   st_point() |> 
 #   st_sfc(crs = 4326) |> 
 #   st_sf(geometry = _,
 #         station = 'RTWB')
 
-stations <- rbind(ocmd, ctrl_sites, exp_sites)
+stations <- rbind(ocmd, a5c, ctrl_sites, exp_sites)
 
 setDT(stations)[, ':='(lon = st_coordinates(geometry)[,1],
                        lat = st_coordinates(geometry)[,2])]
@@ -174,9 +181,9 @@ time_matrix_pretty <- tf(nm_matrix, params$vessel_sp_kts)
 
 deploy_seq <- data.table(start = stations$station[path[1:(length(path) - 1)]],
                          end = stations$station[path[2:length(path)]],
-                         sttime = c(as.POSIXct(params$start$d1) + 30*60, rep(NA, 6)),
-                         endtime = c(as.POSIXct(params$start$d1), rep(NA, 6)),
-                         pots = c(as.POSIXct(params$start$d1), rep(NA, 6)))
+                         sttime = c(as.POSIXct(params$start$d1) + 30*60, rep(NA, 7)),
+                         endtime = c(as.POSIXct(params$start$d1), rep(NA, 7)),
+                         pots = c(as.POSIXct(params$start$d1), rep(NA, 7)))
 deploy_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
 deploy_seq[1, pots := endtime + 10 * 60]
 
@@ -189,9 +196,9 @@ for(i in 2:(length(path)-1)){
 
 rec_seq <- data.table(start =stations$station[path[1:(length(path) - 1)]],
                          end = stations$station[path[2:length(path)]],
-                         sttime = c(as.POSIXct(params$start$d2) + 30*60, rep(NA, 6)),
-                         endtime = c(as.POSIXct(params$start$d2), rep(NA, 6)),
-                         pots = c(as.POSIXct(params$start$d2), rep(NA, 6)))
+                         sttime = c(as.POSIXct(params$start$d2) + 30*60, rep(NA, 7)),
+                         endtime = c(as.POSIXct(params$start$d2), rep(NA, 7)),
+                         pots = c(as.POSIXct(params$start$d2), rep(NA, 7)))
 rec_seq[1, endtime := sttime + time_matrix_raw[start, end] * 3600]
 rec_seq[1, pots := endtime + 15 * 60]
 
@@ -257,6 +264,7 @@ cat('- Capt. Brandon Harrington\n- *Integrity* mate')
 -   Full crew
     -   `r format(as.POSIXct(params$start$d1), '%H:%M')` Arrive at F/V Integrity (Sea Born LLC)
     -   `r paste(format(deploy_seq$sttime[1], '%H:%M'), format(deploy_seq$endtime[7], '%H:%M'), sep = ' - ')` Fish pot deployment aboard F/V Integrity
+    -   Attempt recovery of A-5C
 -   Scientific crew
     -   16:00 Pick up dry ice from Harris Teeter
         -   31221 Americana Pkwy, Selbyville, DE 19975
@@ -310,6 +318,8 @@ cat('- Capt. Brandon Harrington\n- *Integrity* mate')
 🔲 Samsung tablet
 
 🔲 Release transponder/box
+
+🔲 Sonardyne Release transponder/box
 :::
 :::
 
@@ -375,6 +385,19 @@ cat('- Capt. Brandon Harrington\n- *Integrity* mate')
 :::
 :::
 
+### Misc
+- A-5C: 38 20.160, -74 43.392
+  - Payload: 38 20.160, -74 43.356; 100#: 38 20.166, -74 43.422
+  - Release Serial: 303531-003
+  - Release Addr: 111.1
+- T-1C; 38 19.89, -74 56.946
+  - Payload: 38 19.914, -74 56.946; 100# 38 19.866, -74 56.934
+  - Release Serial: 298763-006
+  - Release Addr: 140.5
+- D2; 38 16.422, -74 40.476
+  - Release Serial: 298763-005
+  - Release Addr: 13.4
+
 \newpage
 
 ```{r}
@@ -390,6 +413,20 @@ leaflet() |>
   addPolygons(data = zones, color = 'pink') |>
   addPolygons(data = ctrl_area, color = 'gray')|>
   addCircleMarkers(data = stations, label = ~ station) |> 
+  addCircleMarkers(
+    lat = c(38.3360, 38.3361,
+            38.3319, 38.3311),
+    lng = c(-74.7226, -74.7237,
+            -74.9491, -74.9489),
+    fillColor = 'black',
+    color = 'black'
+  ) |> 
+  addCircleMarkers(
+    lat = c(38.3360, 38.3315),
+    lng = c(-74.7232, -74.9491),
+    fillColor = 'red',
+    color = 'red',
+  ) |> 
   addPolylines(data = st_sfc(
     st_cast(
       do.call(c, st_geometry(stations[c(path),])),
@@ -430,7 +467,7 @@ leaflet() |>
 -   `r format(deploy_seq$endtime[6], '%H:%M')` Arrive **`r deploy_seq$end[6]`**. Deploy pots.
 -   `r format(deploy_seq$pots[6], '%H:%M')` Finish deploying pots. Depart for **`r deploy_seq$end[7]`**
 -   <font size= "5"> **`r stations[stations$station == deploy_seq$end[7],]$lat_dm`, `r stations[stations$station == deploy_seq$end[7],]$lon_dm`** </font>
--   `r format(deploy_seq$endtime[7], '%H:%M')` Arrive **`r deploy_seq$end[7]`**.
+-   `r format(deploy_seq$endtime[7], '%H:%M')` Arrive **`r deploy_seq$end[7]`**. Attempt recovery.
 :::
 :::
 
