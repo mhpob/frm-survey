@@ -386,17 +386,18 @@ cat('- Capt. Brandon Harrington\n- *Integrity* mate')
 :::
 
 ### Misc
-- A-5C: 38 20.160, -74 43.392
-  - Payload: 38 20.160, -74 43.356; 100#: 38 20.166, -74 43.422
-  - Release Serial: 303531-003
-  - Release Addr: 111.1
-- T-1C; 38 19.89, -74 56.946
-  - Payload: 38 19.914, -74 56.946; 100# 38 19.866, -74 56.934
-  - Release Serial: 298763-006
-  - Release Addr: 140.5
-- D2; 38 16.422, -74 40.476
-  - Release Serial: 298763-005
-  - Release Addr: 13.4
+
+-   A-5C: 38 20.160, -74 43.392
+    -   Payload: 38 20.160, -74 43.356; 100#: 38 20.166, -74 43.422
+    -   Release Serial: 303531-003
+    -   Release Addr: 111.1
+-   T-1C; 38 19.89, -74 56.946
+    -   Payload: 38 19.914, -74 56.946; 100# 38 19.866, -74 56.934
+    -   Release Serial: 298763-006
+    -   Release Addr: 140.5
+-   D2; 38 16.422, -74 40.476
+    -   Release Serial: 298763-005
+    -   Release Addr: 13.4
 
 \newpage
 
