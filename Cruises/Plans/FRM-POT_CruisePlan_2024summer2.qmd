@@ -15,7 +15,7 @@ params:
     value:
       d1: '2024-09-10 02:30'
       d2: '2024-09-11 02:30'
-  seed: 20240909
+  seed: 20240911
   n_control: 2
   n_exp: 4
   vessel_sp_kts: 8
